@@ -1,0 +1,40 @@
+# ── MoleCode repo: only molecode/, examples/, docs/ and the top-level
+#    packaging files are tracked. Everything below is local research material
+#    or build/cache cruft that must NOT be published.
+
+# Original research working dirs (kept locally, never committed).
+# Leading slash anchors to repo root so molecode/markush/ is NOT matched.
+/mgl_code/
+/markush/
+/MoleCode_paper/
+/__MACOSX/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Editor / misc
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Large local artifacts / scratch
+*.zip
+*.png.bak

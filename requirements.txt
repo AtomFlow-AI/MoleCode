@@ -1,0 +1,4 @@
+# Core runtime dependencies for the MoleCode library.
+rdkit>=2022.9        # molecule/polymer/markush conversion (SMILES <-> graph)
+networkx>=2.6        # markush graph-isomorphism comparison (egl_isomorphic)
+# Pillow is pulled in transitively by rdkit's Draw module (visualization helpers).
