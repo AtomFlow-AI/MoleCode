@@ -185,12 +185,11 @@ docs/                    # overview, syntax, polymers, markush, tasks, why-it-wo
 If you use MoleCode in your research, please cite the MoleCode technical report:
 
 ```bibtex
-@techreport{molecode2026,
-  title  = {MoleCode: An LLM-Native, Graph-Explicit Molecular Language},
-  author = {AtomFlow-AI},
-  year   = {2026},
-  institution = {AtomFlow-AI},
-  url    = {https://github.com/AtomFlow-AI/MoleCode}
+@article{yan2026molecode,
+  title={MoleCode unlocks structural intelligence in large language models},
+  author={Yan, Zhiyuan and Liu, Chen and Zhao, Boxuan and Lin, Kaiqing and Zhao, Jixiang and Wang, Yimi and Lv, Liuzhenghao and Li, Hao and Zhang, Shanzhuo and Yuan, Li and others},
+  journal={arXiv preprint arXiv:2605.16480},
+  year={2026}
 }
 ```
 
