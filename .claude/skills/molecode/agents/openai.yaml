@@ -1,0 +1,4 @@
+interface:
+  display_name: "MoleCode"
+  short_description: "Understand, edit, generate, and validate molecules as explicit MoleCode (Mermaid) atom/bond graphs — molecules, polymers, and Markush."
+  default_prompt: "Use $molecode to understand or edit this molecule at the MoleCode graph level, then validate it with scripts/molecode_convert.py."

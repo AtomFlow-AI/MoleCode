@@ -186,6 +186,25 @@ See [docs/05-tasks.md](docs/05-tasks.md) for the full task catalog.
 
 ---
 
+## Use with coding agents (Claude Code · Codex)
+
+MoleCode ships as a ready-to-use **Agent Skill** so a coding agent can grab this
+repo and immediately understand and edit molecules at the graph level:
+
+- **Claude Code** auto-discovers the skill at [`.claude/skills/molecode/`](.claude/skills/molecode/) —
+  just ask it to understand or edit a molecule.
+- **Codex / other agents** read [`AGENTS.md`](AGENTS.md) and use the bundled CLI.
+
+```bash
+python .claude/skills/molecode/scripts/molecode_convert.py doctor
+python .claude/skills/molecode/scripts/molecode_convert.py smiles-to-molecode "CCO" --name Ethanol
+python .claude/skills/molecode/scripts/molecode_convert.py validate --input edited.mmd
+```
+
+The skill bundles a stable CLI (the six conversion forms + `validate`/`compare`/
+`doctor`), a syntax reference for hand-editing graphs, and a file-based edit
+workflow — see [`.claude/skills/molecode/SKILL.md`](.claude/skills/molecode/SKILL.md).
+
 ## Repository layout
 
 ```
@@ -197,6 +216,8 @@ molecode/                # the library (pip-installable)
 └── llm.py               # optional OpenAI-compatible client (you supply key + base_url)
 examples/                # 7 runnable demos (round-trips + 4 task families)
 docs/                    # overview, syntax, polymers, markush, tasks, why-it-works
+AGENTS.md                # entrypoint for coding agents
+.claude/skills/molecode/ # Agent Skill: SKILL.md + CLI + references (Claude Code / Codex)
 ```
 
 ---
