@@ -63,6 +63,27 @@ psmiles = mermaid_to_psmiles(graph)                               # graph -> '*N
 Each block's SMILES must contain exactly two `*` attachment points (first `*` =
 left/entry, second `*` = right/exit).
 
+## Stereochemistry
+
+The repeat unit's stereochemistry is preserved across the round trip, using the
+same conventions as the [small-molecule grammar](02-syntax.md):
+
+- **Tetrahedral chirality** — atoms carry an absolute CIP suffix `_R` / `_S` on
+  their id (e.g. a poly(lactic acid) stereocentre `B0_C2_R`). The label is the
+  absolute CIP configuration, not RDKit's order-dependent CW/CCW tag.
+- **Double-bond geometry** — `===|E|` / `===|Z|` on the double bond (e.g.
+  *trans*- vs *cis*-polybutadiene).
+
+```python
+from rdkit import Chem
+from molecode.polymer import polymer_to_mermaid, mermaid_to_psmiles
+
+# cis vs trans are kept distinct through the round trip
+trans = mermaid_to_psmiles(polymer_to_mermaid("*C/C=C/C*", n=10))   # -> '*C/C=C/C*'
+cis   = mermaid_to_psmiles(polymer_to_mermaid("*C/C=C\\C*", n=10))  # -> '*C/C=C\\C*'
+assert Chem.CanonSmiles(trans) != Chem.CanonSmiles(cis)
+```
+
 ## Block copolymers
 
 A copolymer is one subgraph per block, in order:
