@@ -18,6 +18,13 @@ python examples/01_molecule_roundtrip.py
 | `05_generation.py` | **Generation** — de novo design under constraints | optional |
 | `06_editing.py` | **Editing** — local graph edits (add/delete/substitute) | optional |
 | `07_reasoning.py` | **Reasoning** — reaction-product prediction | optional |
+| `08_image_to_molecode.py` | **OCSR** — molecule image → MoleCode graph | vision model |
+
+`08_image_to_molecode.py` performs OCSR (optical chemical structure recognition):
+it renders a demo molecule to a PNG (or takes an image path you pass), sends the
+image plus the Markush MoleCode system prompt to a **vision-capable** model, and
+parses the returned MoleCode graph back to a structure. Set `MOLECODE_MODEL` to a
+vision model (e.g. `gpt-4o-mini`, `gpt-4o`); with no API key it dry-runs.
 
 ## The four LLM task families
 

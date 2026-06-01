@@ -9,7 +9,7 @@ express.
 
 This example shows:
   1. parsing a Markush Mermaid graph that contains abbreviation nodes;
-  2. graph-isomorphism scoring (``egl_isomorphic``) that treats equivalent
+  2. graph-isomorphism scoring (``molecode_isomorphic``) that treats equivalent
      spellings and expanded/abbreviated forms as equal.
 
     python examples/03_markush_roundtrip.py
@@ -18,8 +18,8 @@ This example shows:
 from molecode.markush import (
     mermaid_to_mol,
     mol_to_smiles,
-    EGLGraph,
-    egl_isomorphic,
+    MoleCodeGraph,
+    molecode_isomorphic,
     EXPAND_MAP,
 )
 
@@ -60,7 +60,7 @@ def main() -> None:
     print("  SMILES:", mol_to_smiles(mol))
 
     # Abbreviation equivalence: {Me} and {CH3} denote the same group, and a
-    # composite "NHBoc" decomposes to [NH]---{Boc}. egl_isomorphic recognises
+    # composite "NHBoc" decomposes to [NH]---{Boc}. molecode_isomorphic recognises
     # these as equal up to abbreviation expansion.
     print("\nAbbreviation-aware isomorphism:")
     pairs = [
@@ -72,9 +72,9 @@ def main() -> None:
          "graph TB\n subgraph M[\"m\"]\n M_N_1[NH]\n M_X_1{Boc}\n M_N_1 --- M_X_1\n end"),
     ]
     for label, a, b in pairs:
-        g1 = EGLGraph.from_egl_text(a)
-        g2 = EGLGraph.from_egl_text(b)
-        iso, details = egl_isomorphic(g1, g2, abbrev_expand_map=EXPAND_MAP)
+        g1 = MoleCodeGraph.from_text(a)
+        g2 = MoleCodeGraph.from_text(b)
+        iso, details = molecode_isomorphic(g1, g2, abbrev_expand_map=EXPAND_MAP)
         print(f"  {label:42} -> {iso}  ({details.get('reason')})")
 
 

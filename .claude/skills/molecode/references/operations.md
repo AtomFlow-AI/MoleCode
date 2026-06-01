@@ -51,6 +51,21 @@ python scripts/molecode_convert.py compare --input candidate.mmd --ref reference
 
 `compare` exits 0 when isomorphic, 1 otherwise, and prints the reason.
 
+## OCSR (molecule image → MoleCode)
+
+Recover a structure from a picture with a **vision-capable** model. Requires
+`MOLECODE_API_KEY` and a vision model (`MOLECODE_MODEL=gpt-4o-mini`, `gpt-4o`,
+a Gemini/Claude vision model, …). Uses the Markush MoleCode prompt, so it works
+for ordinary molecules and for structures with abbreviated/R-group labels.
+
+```bash
+python scripts/molecode_convert.py image-to-molecode molecule.png
+python scripts/molecode_convert.py image-to-molecode diagram.png --model gpt-4o --output out.mmd
+```
+
+It prints the predicted MoleCode graph (and the parsed SMILES to stderr). Pass an
+image file path or an image URL.
+
 ## Validate
 
 ```bash

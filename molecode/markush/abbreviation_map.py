@@ -1,5 +1,5 @@
 """
-Abbreviation group -> EGL subgraph expansion map.
+Abbreviation group -> MoleCode subgraph expansion map.
 
 Two expansion types:
 1. single_atom_label: the abbreviation is equivalent to a single atom label (e.g. Me -> [CH3])
@@ -560,7 +560,7 @@ NON_EXPANDABLE = {
 
 
 def build_expand_map():
-    """Build the complete expansion map for use by egl_graph.egl_isomorphic."""
+    """Build the complete expansion map for use by graph.molecode_isomorphic."""
     expand_map = {}
 
     # Single atom expansions

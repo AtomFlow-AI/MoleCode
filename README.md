@@ -174,6 +174,7 @@ python examples/04_understanding.py        # count atoms / formula / rings ...
 python examples/05_generation.py           # de novo design under constraints
 python examples/06_editing.py              # local graph edits (add/del/substitute)
 python examples/07_reasoning.py            # reaction-product prediction
+python examples/08_image_to_molecode.py    # OCSR: molecule image -> MoleCode (vision model)
 ```
 
 The reusable ingredients:
@@ -226,7 +227,7 @@ See [docs/05-tasks.md](docs/05-tasks.md) for the full task catalog.
 molecode/                # the library (pip-installable)
 ├── molecule/            # small-molecule  <-> Mermaid  (rdkit_to_mermaid, mermaid_to_rdkit)
 ├── polymer/             # polymer         <-> Mermaid  (polymer_to_mermaid, mermaid_to_psmiles)
-├── markush/             # Markush         <-> Mermaid  + egl_graph isomorphism + abbreviation_map
+├── markush/             # Markush         <-> Mermaid  + graph isomorphism + abbreviation_map
 ├── prompts/             # LLM system prompts (molecule + markush grammars)
 └── llm.py               # optional OpenAI-compatible client (you supply key + base_url)
 examples/                # 7 runnable demos (round-trips + 4 task families)

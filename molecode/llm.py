@@ -39,6 +39,29 @@ from typing import Any, Dict, List, Optional
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL = "gpt-4o-mini"
 
+_IMAGE_MIME = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
+}
+
+
+def image_to_data_uri(path_or_url: str) -> str:
+    """Return a value suitable for an OpenAI ``image_url`` content block.
+
+    A remote ``http(s)://`` URL is returned unchanged; a local file path is read
+    and encoded as a base64 ``data:`` URI (mime guessed from the extension).
+    """
+    import base64
+    import os.path
+
+    if path_or_url.startswith(("http://", "https://", "data:")):
+        return path_or_url
+    ext = os.path.splitext(path_or_url)[1].lower()
+    mime = _IMAGE_MIME.get(ext, "image/png")
+    with open(path_or_url, "rb") as fh:
+        b64 = base64.b64encode(fh.read()).decode("ascii")
+    return f"data:{mime};base64,{b64}"
+
 
 class LLMClient:
     """OpenAI-compatible chat client. You provide ``api_key`` and ``base_url``.
@@ -89,15 +112,31 @@ class LLMClient:
         user: str,
         system: Optional[str] = None,
         *,
+        images: Optional[List[str]] = None,
         model: Optional[str] = None,
         temperature: Optional[float] = None,
         **extra: Any,
     ) -> str:
-        """Single-turn helper: send a ``system`` + ``user`` message, return text."""
-        messages: List[Dict[str, str]] = []
+        """Single-turn helper: send a ``system`` + ``user`` message, return text.
+
+        Pass ``images`` (a list of local file paths or URLs) to send a
+        multimodal request to a vision-capable model — used for OCSR
+        (molecule image -> MoleCode graph). Requires a model that accepts image
+        input (e.g. gpt-4o, gpt-4o-mini, gemini, claude vision models).
+        """
+        messages: List[Dict[str, Any]] = []
         if system:
             messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": user})
+        if images:
+            content: List[Dict[str, Any]] = [{"type": "text", "text": user}]
+            for img in images:
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": image_to_data_uri(img)},
+                })
+            messages.append({"role": "user", "content": content})
+        else:
+            messages.append({"role": "user", "content": user})
         return self.complete(messages, model=model, temperature=temperature, **extra)
 
     def complete(

@@ -1,20 +1,20 @@
 """
-Extended EGL System Prompt v2 -- supports abbreviation groups + CoT planning within EGL comments.
+Extended MoleCode System Prompt v2 -- supports abbreviation groups + CoT planning within MoleCode comments.
 
 Key improvements:
-1. CoT: the model first analyzes the image and plans the structure in %% comments, then writes EGL
+1. CoT: the model first analyzes the image and plans the structure in %% comments, then writes MoleCode
 2. Fragment-by-fragment output: nodes and bonds for each substructure are written together to avoid missing bonds due to truncation
 3. Verification step: at the end, atom count, bond count, and valence are verified in comments
 """
 
-ESMILES_EGL_INSTRUCTION = '''
-# EGL (Edge-Graph Language) Molecular Graph Specification
+MARKUSH_SYSTEM_PROMPT = '''
+# MoleCode (Edge-Graph Language) Molecular Graph Specification
 
-You are an expert chemist. Given a molecular structure image, identify every atom, bond, and label, then represent it as an EGL graph.
+You are an expert chemist. Given a molecular structure image, identify every atom, bond, and label, then represent it as an MoleCode graph.
 
 ## Overview
 
-EGL represents molecules as explicit graphs with two types of nodes:
+MoleCode represents molecules as explicit graphs with two types of nodes:
 - **Atom nodes** `[label]` — real atoms with element, hydrogen count, and charge
 - **Abbreviation nodes** `{label}` — abbreviated groups shown as text labels in the image (e.g., Boc, Me, Ph, R₁, R₂)
 

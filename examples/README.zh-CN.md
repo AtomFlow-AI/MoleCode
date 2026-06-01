@@ -18,6 +18,12 @@ python examples/01_molecule_roundtrip.py
 | `05_generation.py` | **生成** — 约束下的从头设计 | 可选 |
 | `06_editing.py` | **编辑** — 局部图编辑(增/删/替换) | 可选 |
 | `07_reasoning.py` | **推理** — 反应产物预测 | 可选 |
+| `08_image_to_molecode.py` | **OCSR** — 分子图片 → MoleCode 图 | 视觉模型 |
+
+`08_image_to_molecode.py` 演示 OCSR(光学化学结构识别):它把一个示例分子渲染成 PNG
+(或使用你传入的图片路径),将图片连同 Markush 版 MoleCode 系统提示一起发给**支持视觉的**
+模型,再把返回的 MoleCode 图解析回结构。把 `MOLECODE_MODEL` 设为视觉模型(如 `gpt-4o-mini`、
+`gpt-4o`);未设 API key 时为空跑(dry-run)。
 
 ## 四类 LLM 任务
 

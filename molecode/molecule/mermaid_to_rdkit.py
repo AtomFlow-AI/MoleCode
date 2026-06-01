@@ -337,7 +337,7 @@ class MermaidMolParser:
 
         try:
             # Do not use cleanIt=True to avoid clearing the E/Z labels
-            # explicitly restored from the EGL.
+            # explicitly restored from the MoleCode.
             Chem.AssignStereochemistry(mol, cleanIt=False, force=True)
         except Exception:
             pass

@@ -62,8 +62,10 @@ MoleCode spans three structural domains, each convertible in both directions:
 | Polymer (PSMILES, `×n`) | `psmiles-to-molecode` | `molecode-to-psmiles` |
 | Markush (`{}` R-groups) | *(author by hand)* | `markush-to-smiles` |
 
-Plus utilities: `validate` (formula / atom & ring counts / round-trip) and
-`compare` (markush-aware graph isomorphism) and `doctor` (environment check).
+Plus utilities: `validate` (formula / atom & ring counts / round-trip),
+`compare` (markush-aware graph isomorphism), `doctor` (environment check), and
+`image-to-molecode` (OCSR: read a molecule **image** with a vision model and
+emit a MoleCode graph — needs a vision-capable model + API key).
 
 ## File-based workflow (preferred for nontrivial edits)
 

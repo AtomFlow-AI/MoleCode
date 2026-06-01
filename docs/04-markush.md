@@ -67,20 +67,20 @@ defines how abbreviations expand to structure:
 
 ## Graph-isomorphism comparison (no RDKit)
 
-[`molecode.markush.egl_graph`](../molecode/markush/egl_graph.py) compares two
+[`molecode.markush.graph`](../molecode/markush/graph.py) compares two
 Markush graphs **up to abbreviation expansion and Kekulé ambiguity** — the right
 notion of "same structure" for scoring model predictions:
 
 ```python
-from molecode.markush import EGLGraph, egl_isomorphic, EXPAND_MAP
+from molecode.markush import MoleCodeGraph, molecode_isomorphic, EXPAND_MAP
 
-g1 = EGLGraph.from_egl_text(pred_text)
-g2 = EGLGraph.from_egl_text(gold_text)
-same, details = egl_isomorphic(g1, g2, abbrev_expand_map=EXPAND_MAP)
+g1 = MoleCodeGraph.from_text(pred_text)
+g2 = MoleCodeGraph.from_text(gold_text)
+same, details = molecode_isomorphic(g1, g2, abbrev_expand_map=EXPAND_MAP)
 # details["reason"] -> "isomorphic" | "isomorphic after expansion" | ...
 ```
 
-`egl_isomorphic`:
+`molecode_isomorphic`:
 
 - treats `[OH]` (atom) and `{OH}` (abbrev) with the same label as equal;
 - treats Kekulé-alternating ring bonds (`===`/`---`) as interchangeable;

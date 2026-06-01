@@ -1,8 +1,8 @@
 """
-EGL Graph -- Pure text-level EGL graph parsing and graph-isomorphism comparison (no RDKit dependency)
+MoleCode Graph -- Pure text-level MoleCode graph parsing and graph-isomorphism comparison (no RDKit dependency)
 
 Core features:
-1. Parse node + edge graph structure from EGL mermaid text
+1. Parse node + edge graph structure from MoleCode mermaid text
 2. Graph-isomorphism comparison based on networkx (supports node/edge attribute matching)
 3. Normalized comparison after abbreviation expansion
 """
@@ -16,7 +16,7 @@ import networkx as nx
 
 @dataclass
 class NodeInfo:
-    """Node information in an EGL graph."""
+    """Node information in an MoleCode graph."""
     node_id: str          # Raw ID (e.g. Mol_C_1)
     label: str            # Display label (e.g. CH3, Boc, R1)
     label_type: str       # "atom" (square brackets []) or "abbrev" (curly braces {})
@@ -25,28 +25,28 @@ class NodeInfo:
 
 @dataclass
 class EdgeInfo:
-    """Edge information in an EGL graph."""
+    """Edge information in an MoleCode graph."""
     src: str              # Source node ID
     dst: str              # Destination node ID
     bond_type: str        # ---, ===, -.- , -->
     stereo: str = ""      # E, Z, CIS, TRANS, or empty
 
 
-class EGLGraph:
-    """Graph structure parsed from EGL mermaid text."""
+class MoleCodeGraph:
+    """Graph structure parsed from MoleCode mermaid text."""
 
     def __init__(self):
         self.nodes: Dict[str, NodeInfo] = {}
         self.edges: List[EdgeInfo] = []
 
     @classmethod
-    def from_egl_text(cls, egl_text: str) -> 'EGLGraph':
-        """Parse graph structure from EGL mermaid text."""
+    def from_text(cls, text: str) -> 'MoleCodeGraph':
+        """Parse graph structure from MoleCode mermaid text."""
         graph = cls()
-        if not egl_text:
+        if not text:
             return graph
 
-        for line in egl_text.strip().split('\n'):
+        for line in text.strip().split('\n'):
             line = line.strip()
 
             # Skip comments, blank lines, graph/subgraph/end
@@ -62,7 +62,7 @@ class EGLGraph:
         return graph
 
     def _parse_line(self, line: str):
-        """Parse a single EGL line."""
+        """Parse a single MoleCode line."""
 
         # Double bond with stereochemistry: atom1 ===|E| atom2
         m = re.search(r'([\w_]+)\s*===\|([EZez]|cis|trans|CIS|TRANS)\|\s*([\w_]+)', line)
@@ -247,14 +247,14 @@ def _mark_aromatic_edges(G: nx.Graph) -> nx.Graph:
     return G
 
 
-def egl_isomorphic(g1: EGLGraph, g2: EGLGraph,
+def molecode_isomorphic(g1: MoleCodeGraph, g2: MoleCodeGraph,
                    ignore_stereo: bool = True,
                    normalize_abbrevs: bool = True,
                    abbrev_expand_map: Optional[dict] = None) -> Tuple[bool, dict]:
-    """EGL-level graph isomorphism comparison.
+    """MoleCode-level graph isomorphism comparison.
 
     Args:
-        g1, g2: Two EGL graphs
+        g1, g2: Two MoleCode graphs
         ignore_stereo: Whether to ignore stereochemistry (E/Z, R/S)
         normalize_abbrevs: Whether to normalize abbreviation names
         abbrev_expand_map: Abbreviation expansion map (for matching expanded vs. unexpanded cases)
@@ -450,7 +450,7 @@ def _expand_graph(G: nx.Graph, abbrev_map: dict) -> nx.Graph:
 
 if __name__ == "__main__":
     # Quick test
-    egl1 = """
+    mc1 = """
     graph TB
         subgraph Mol["test"]
             Mol_C_1[C]
@@ -461,7 +461,7 @@ if __name__ == "__main__":
             Mol_C_3 === Mol_C_1
         end
     """
-    egl2 = """
+    mc2 = """
     graph TB
         subgraph M["test"]
             M_C_1[CH]
@@ -472,15 +472,15 @@ if __name__ == "__main__":
             M_C_3 === M_C_1
         end
     """
-    g1 = EGLGraph.from_egl_text(egl1)
-    g2 = EGLGraph.from_egl_text(egl2)
+    g1 = MoleCodeGraph.from_text(mc1)
+    g2 = MoleCodeGraph.from_text(mc2)
     print(f"g1: {g1.num_nodes} nodes, {g1.num_edges} edges")
     print(f"g2: {g2.num_nodes} nodes, {g2.num_edges} edges")
-    is_iso, details = egl_isomorphic(g1, g2)
+    is_iso, details = molecode_isomorphic(g1, g2)
     print(f"Isomorphic: {is_iso}, reason: {details['reason']}")
 
     # Test with abbreviation
-    egl3 = """
+    mc3 = """
     graph TB
         subgraph Mol["test"]
             Mol_C_1[C]
@@ -488,7 +488,7 @@ if __name__ == "__main__":
             Mol_C_1 --- Mol_X_1
         end
     """
-    egl4 = """
+    mc4 = """
     graph TB
         subgraph Mol["test"]
             Mol_C_1[C]
@@ -496,8 +496,8 @@ if __name__ == "__main__":
             Mol_C_1 --- Mol_X_1
         end
     """
-    g3 = EGLGraph.from_egl_text(egl3)
-    g4 = EGLGraph.from_egl_text(egl4)
+    g3 = MoleCodeGraph.from_text(mc3)
+    g4 = MoleCodeGraph.from_text(mc4)
     abbrev_map = {"Me": {"single_atom_label": "CH3"}, "CH3": {"single_atom_label": "CH3"}}
-    is_iso, details = egl_isomorphic(g3, g4, abbrev_expand_map=abbrev_map)
+    is_iso, details = molecode_isomorphic(g3, g4, abbrev_expand_map=abbrev_map)
     print(f"Me vs CH3: {is_iso}, reason: {details['reason']}")

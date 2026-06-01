@@ -144,15 +144,49 @@ def cmd_markush_to_smiles(a) -> int:
 
 def cmd_compare(a) -> int:
     """Graph-isomorphism comparison (markush-aware) of two MoleCode graphs."""
-    from molecode.markush import EGLGraph, egl_isomorphic, EXPAND_MAP
-    g1 = EGLGraph.from_egl_text(_read_payload(a.graph, a.input))
-    g2 = EGLGraph.from_egl_text(_read_payload(None, a.ref))
-    same, details = egl_isomorphic(g1, g2, abbrev_expand_map=EXPAND_MAP)
+    from molecode.markush import MoleCodeGraph, molecode_isomorphic, EXPAND_MAP
+    g1 = MoleCodeGraph.from_text(_read_payload(a.graph, a.input))
+    g2 = MoleCodeGraph.from_text(_read_payload(None, a.ref))
+    same, details = molecode_isomorphic(g1, g2, abbrev_expand_map=EXPAND_MAP)
     print(f"isomorphic: {same}")
     print(f"reason:     {details.get('reason')}")
     if details.get("unmatched_abbrevs"):
         print(f"unmatched_abbrevs: {details['unmatched_abbrevs']}")
     return 0 if same else 1
+
+
+def cmd_image_to_molecode(a) -> int:
+    """OCSR: read a molecule image with a vision LLM, output a MoleCode graph."""
+    from molecode.prompts import MARKUSH_SYSTEM_PROMPT
+    from molecode.markush import mermaid_to_mol, mol_to_smiles, has_invalid_atoms
+    from molecode.llm import LLMClient
+
+    try:
+        client = LLMClient(model=a.model) if a.model else LLMClient()
+    except ValueError as exc:
+        sys.stderr.write(f"{exc}\n\nOCSR needs a vision-capable model. Set "
+                         "MOLECODE_API_KEY (and MOLECODE_MODEL, e.g. gpt-4o-mini).\n")
+        return 2
+
+    instruction = ("Read the molecular structure in this image and output it as "
+                   "a MoleCode graph. Respond with ONLY a single fenced ```mermaid "
+                   "code block.")
+    reply = client.chat(instruction, system=MARKUSH_SYSTEM_PROMPT, images=[a.image])
+
+    graph = reply.strip()
+    if "```" in graph:
+        graph = graph.split("```", 2)[1]
+        if graph.startswith("mermaid"):
+            graph = graph[len("mermaid"):]
+        graph = graph.strip()
+
+    _emit(graph, a.output)
+    if not a.output:
+        mol = mermaid_to_mol(graph, strict=False)
+        if mol is not None:
+            note = " (with abbreviation placeholders)" if has_invalid_atoms(mol) else ""
+            sys.stderr.write(f"# parsed SMILES: {mol_to_smiles(mol)}{note}\n")
+    return 0
 
 
 def cmd_validate(a) -> int:
@@ -259,6 +293,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--ref", required=True, help="Second graph FILE to compare against.")
     s.add_argument("--input", help="Read the first graph from FILE.")
     s.set_defaults(func=cmd_compare)
+
+    s = sub.add_parser("image-to-molecode",
+                       help="OCSR: molecule image -> MoleCode graph (needs a vision model).")
+    s.add_argument("image", help="Path to a molecule image (PNG/JPG), or an image URL.")
+    s.add_argument("--model", help="Override the (vision-capable) model, e.g. gpt-4o.")
+    s.add_argument("--output", help="Write the MoleCode graph to FILE instead of stdout.")
+    s.set_defaults(func=cmd_image_to_molecode)
 
     s = sub.add_parser("validate",
                        help="Parse a molecule graph; report SMILES/formula/counts/round-trip.")

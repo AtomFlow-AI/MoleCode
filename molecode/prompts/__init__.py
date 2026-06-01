@@ -9,6 +9,6 @@ edit molecules in MoleCode.
 """
 
 from .molecule_system_prompt import BASE_INSTRUCTION as MOLECULE_SYSTEM_PROMPT
-from .markush_system_prompt import ESMILES_EGL_INSTRUCTION as MARKUSH_SYSTEM_PROMPT
+from .markush_system_prompt import MARKUSH_SYSTEM_PROMPT
 
 __all__ = ["MOLECULE_SYSTEM_PROMPT", "MARKUSH_SYSTEM_PROMPT"]

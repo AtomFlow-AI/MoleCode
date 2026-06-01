@@ -171,6 +171,7 @@ python examples/04_understanding.py        # 数原子 / 分子式 / 环 ...
 python examples/05_generation.py           # 约束下的从头设计
 python examples/06_editing.py              # 局部图编辑(增/删/替换)
 python examples/07_reasoning.py            # 反应产物预测
+python examples/08_image_to_molecode.py    # OCSR:分子图片 -> MoleCode(视觉模型)
 ```
 
 可复用的核心组件:
@@ -218,7 +219,7 @@ print(reply)
 molecode/                # 核心库(可 pip 安装)
 ├── molecule/            # 小分子    <-> Mermaid  (rdkit_to_mermaid, mermaid_to_rdkit)
 ├── polymer/             # 聚合物    <-> Mermaid  (polymer_to_mermaid, mermaid_to_psmiles)
-├── markush/             # 马库什    <-> Mermaid  + egl_graph 图同构 + abbreviation_map
+├── markush/             # 马库什    <-> Mermaid  + graph 图同构 + abbreviation_map
 ├── prompts/             # LLM 系统提示(小分子 + 马库什文法)
 └── llm.py               # 可选的 OpenAI 兼容客户端(key 与 base_url 由你提供)
 examples/                # 7 个可运行示例(往返 + 四类任务)
