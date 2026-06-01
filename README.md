@@ -197,7 +197,7 @@ from molecode.prompts import MOLECULE_SYSTEM_PROMPT
 from molecode.molecule import mol_to_mermaid, mermaid_to_mol
 from rdkit import Chem
 
-client = LLMClient(api_key="sk-...", base_url="https://api.openai.com/v1", model="gpt-4o-mini")
+client = LLMClient(api_key="sk-...", base_url="https://api.openai.com/v1", model="")
 # (or set MOLECODE_API_KEY / MOLECODE_BASE_URL / MOLECODE_MODEL and call LLMClient())
 
 graph = mol_to_mermaid(Chem.MolFromSmiles("CC(=O)Oc1ccccc1C(=O)O"), name="Aspirin")
