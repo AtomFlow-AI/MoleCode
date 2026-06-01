@@ -158,18 +158,16 @@ class MolToMermaidConverter:
         # 基础ID
         base_id = f"{clean_name}_{symbol}_{count}"
 
-        # 检测手性并添加后缀
-        chiral_tag = atom.GetChiralTag()
+        # 使用 RDKit 计算出的绝对 CIP 构型，而不是直接把
+        # CHI_TETRAHEDRAL_CW/CCW 当作 R/S。CW/CCW 依赖原子顺序，
+        # 只有 _CIPCode 才是可序列化的绝对 R/S 标签。
+        if atom.HasProp('_CIPCode'):
+            cip_code = atom.GetProp('_CIPCode')
+            if cip_code in ('R', 'S'):
+                return f"{base_id}_{cip_code}"
 
-        if chiral_tag == Chem.ChiralType.CHI_TETRAHEDRAL_CW:
-            # 顺时针 (R构型)
-            return f"{base_id}_R"
-        elif chiral_tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW:
-            # 逆时针 (S构型)
-            return f"{base_id}_S"
-        else:
-            # 无手性或未指定
-            return base_id
+        # 无手性或未指定
+        return base_id
 
     def _generate_atom_label(self, atom: Chem.Atom) -> str:
         """

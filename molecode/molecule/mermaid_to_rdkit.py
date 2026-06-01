@@ -28,6 +28,7 @@ class MermaidMolParser:
         '---': Chem.BondType.SINGLE,
         '===': Chem.BondType.DOUBLE,
         '-.-': Chem.BondType.TRIPLE,
+        '<-->': Chem.BondType.AROMATIC,
         '-->': Chem.BondType.DATIVE,  # 配位键
     }
 
@@ -86,7 +87,7 @@ class MermaidMolParser:
 
         # 尝试匹配普通键连接: atom1 bond_type atom2
         # 原子ID可能包含手性后缀 (_R 或 _S)
-        bond_pattern = r'([\w_]+)\s*(---|\===|-\.-|-->)\s*([\w_]+)'
+        bond_pattern = r'([\w_]+)\s*(<-->|---|\===|-\.-|-->)\s*([\w_]+)'
         bond_match = re.search(bond_pattern, line)
 
         if bond_match:
@@ -215,17 +216,10 @@ class MermaidMolParser:
             idx = mol.AddAtom(atom)
             atom_id_to_idx[atom_id] = idx
 
-            # 设置手性（如果有）
-            if atom_id in self.chirality:
-                chirality_type = self.chirality[atom_id]
-                atom_obj = mol.GetAtomWithIdx(idx)
-
-                if chirality_type == 'R':
-                    atom_obj.SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CW)
-                elif chirality_type == 'S':
-                    atom_obj.SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CCW)
-
-        # 添加键
+        # 添加键。双键 E/Z 和四面体 R/S 都需要在完整拓扑存在后设置，
+        # 因此这里先记录，待 SanitizeMol 后统一恢复。
+        stereo_bonds = []
+        aromatic_atom_idxs = set()
         for bond_info in self.bonds:
             if len(bond_info) == 3:
                 # 普通键: (atom1_id, atom2_id, bond_type_str)
@@ -244,40 +238,16 @@ class MermaidMolParser:
 
                 mol.AddBond(idx1, idx2, bond_type)
 
-                # 设置立体化学（稍后统一处理，需要先添加所有键）
+                if bond_type_str == '<-->':
+                    aromatic_atom_idxs.update((idx1, idx2))
+                    bond = mol.GetBondBetweenAtoms(idx1, idx2)
+                    bond.SetIsAromatic(True)
+
                 if stereo_type:
-                    # 记录需要设置立体化学的键
-                    if not hasattr(mol, '_stereo_bonds'):
-                        mol._stereo_bonds = []
-                    mol._stereo_bonds.append((idx1, idx2, stereo_type))
+                    stereo_bonds.append((idx1, idx2, stereo_type))
 
-        # 在转换为不可编辑的Mol之前，设置立体化学
-        if hasattr(mol, '_stereo_bonds'):
-            for idx1, idx2, stereo_type in mol._stereo_bonds:
-                bond = mol.GetBondBetweenAtoms(idx1, idx2)
-
-                # 获取双键两端原子的邻接原子（用于定义立体化学）
-                atom1 = mol.GetAtomWithIdx(idx1)
-                atom2 = mol.GetAtomWithIdx(idx2)
-
-                # 找到idx1的邻居（除了idx2）
-                neighbors1 = [n.GetIdx() for n in atom1.GetNeighbors() if n.GetIdx() != idx2]
-                # 找到idx2的邻居（除了idx1）
-                neighbors2 = [n.GetIdx() for n in atom2.GetNeighbors() if n.GetIdx() != idx1]
-
-                # 如果两端都有邻居，设置立体化学
-                if neighbors1 and neighbors2:
-                    # 使用第一个邻居作为参考原子
-                    bond.SetStereoAtoms(neighbors1[0], neighbors2[0])
-
-                    if stereo_type == 'E':
-                        bond.SetStereo(Chem.BondStereo.STEREOE)
-                    elif stereo_type == 'Z':
-                        bond.SetStereo(Chem.BondStereo.STEREOZ)
-                    elif stereo_type == 'CIS':
-                        bond.SetStereo(Chem.BondStereo.STEREOCIS)
-                    elif stereo_type == 'TRANS':
-                        bond.SetStereo(Chem.BondStereo.STEREOTRANS)
+        for idx in aromatic_atom_idxs:
+            mol.GetAtomWithIdx(idx).SetIsAromatic(True)
 
         # 转换为不可编辑的Mol对象
         mol = mol.GetMol()
@@ -296,7 +266,80 @@ class MermaidMolParser:
                 # 完全失败，返回未清理的版本
                 pass
 
+        self._assign_chirality_from_ids(mol, atom_id_to_idx)
+        self._assign_double_bond_stereo(mol, stereo_bonds)
+
         return mol
+
+
+    def _assign_chirality_from_ids(self, mol: Chem.Mol, atom_id_to_idx: Dict[str, int]):
+        """根据 atom id 的 _R/_S 后缀恢复绝对 CIP 手性。"""
+        if not self.chirality:
+            return
+
+        for atom_id, desired_cip in self.chirality.items():
+            idx = atom_id_to_idx.get(atom_id)
+            if idx is None:
+                continue
+
+            atom = mol.GetAtomWithIdx(idx)
+            matched = False
+
+            for chiral_tag in (
+                Chem.ChiralType.CHI_TETRAHEDRAL_CW,
+                Chem.ChiralType.CHI_TETRAHEDRAL_CCW,
+            ):
+                atom.SetChiralTag(chiral_tag)
+                try:
+                    Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
+                except Exception:
+                    continue
+
+                if atom.HasProp('_CIPCode') and atom.GetProp('_CIPCode') == desired_cip:
+                    matched = True
+                    break
+
+            if not matched:
+                atom.SetChiralTag(Chem.ChiralType.CHI_UNSPECIFIED)
+
+        try:
+            Chem.AssignStereochemistry(mol, cleanIt=False, force=True)
+        except Exception:
+            pass
+
+    def _assign_double_bond_stereo(self, mol: Chem.Mol, stereo_bonds: List[Tuple[int, int, str]]):
+        """恢复 ===|E| / ===|Z| 双键构型。"""
+        for idx1, idx2, stereo_type in stereo_bonds:
+            bond = mol.GetBondBetweenAtoms(idx1, idx2)
+            if bond is None:
+                continue
+
+            # 获取双键两端原子的邻接原子（用于定义立体化学）
+            atom1 = mol.GetAtomWithIdx(idx1)
+            atom2 = mol.GetAtomWithIdx(idx2)
+
+            neighbors1 = [n.GetIdx() for n in atom1.GetNeighbors() if n.GetIdx() != idx2]
+            neighbors2 = [n.GetIdx() for n in atom2.GetNeighbors() if n.GetIdx() != idx1]
+
+            if not neighbors1 or not neighbors2:
+                continue
+
+            bond.SetStereoAtoms(neighbors1[0], neighbors2[0])
+
+            if stereo_type == 'E':
+                bond.SetStereo(Chem.BondStereo.STEREOE)
+            elif stereo_type == 'Z':
+                bond.SetStereo(Chem.BondStereo.STEREOZ)
+            elif stereo_type == 'CIS':
+                bond.SetStereo(Chem.BondStereo.STEREOCIS)
+            elif stereo_type == 'TRANS':
+                bond.SetStereo(Chem.BondStereo.STEREOTRANS)
+
+        try:
+            # 不使用 cleanIt=True，避免清掉刚刚从 EGL 明确恢复的 E/Z 标记。
+            Chem.AssignStereochemistry(mol, cleanIt=False, force=True)
+        except Exception:
+            pass
 
 
 def has_invalid_atoms(mol: Chem.Mol) -> bool:
