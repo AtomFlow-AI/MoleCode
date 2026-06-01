@@ -1,5 +1,7 @@
 # MoleCode examples
 
+**English** | [中文](README.zh-CN.md)
+
 Runnable demonstrations of MoleCode. Run any of them from the repository root:
 
 ```bash

@@ -16,6 +16,8 @@
 [![Works with Codex](https://img.shields.io/badge/Works%20with-Codex-412991.svg)](AGENTS.md)
 [![Agent Skill](https://img.shields.io/badge/Agent-Skill-blue.svg)](.claude/skills/molecode/SKILL.md)
 
+**English** | [中文](README.zh-CN.md)
+
 <img src="docs/assets/overview.png" alt="MoleCode overview" width="100%">
 
 </div>
