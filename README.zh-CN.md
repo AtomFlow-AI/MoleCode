@@ -11,6 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![Powered by RDKit](https://img.shields.io/badge/powered%20by-RDKit-green.svg)](https://www.rdkit.org/)
+[![Website](https://img.shields.io/badge/AtomFlow-atomflow--ai.com-0b7285.svg)](https://atomflow-ai.com/)
 
 [![Works with Claude Code](https://img.shields.io/badge/Works%20with-Claude%20Code-d97757.svg)](.claude/skills/molecode/)
 [![Works with Codex](https://img.shields.io/badge/Works%20with-Codex-412991.svg)](AGENTS.md)
@@ -235,6 +236,22 @@ AGENTS.md                # 面向编码智能体的入口
 | ![](docs/assets/results_1_main.png) | ![](docs/assets/results_2_chemistry.png) | ![](docs/assets/results_3_scaling.png) | ![](docs/assets/results_4_long_molecules.png) | ![](docs/assets/results_5_extension.png) |
 
 ---
+
+## 关于 AtomFlow
+
+MoleCode 由 **[AtomFlow(原子流动)](https://atomflow-ai.com/)** 开发与维护。
+
+AtomFlow 专注于 **LLM-native 的 AI 化学**——让语言模型直接在分子结构上操作,而不是面对晦涩的字符串。
+我们的工作以"以分子为中心"的应用为主,包括:
+
+- **分子对话与交互** —— 与分子对话;选中原子、键或片段,用自然语言进行编辑。
+- **结构感知的编辑** —— 可审计的、图层面的分子编辑。
+- **逆合成** —— 在显式结构之上的 LLM-native 合成路线规划。
+- **文献阅读与结构解析** —— 从论文与专利中抽取结构,包括光学化学结构识别(OCSR)。
+
+MoleCode 是支撑这些产品的开放表示层——让分子结构对 LLM 而言变得显式、可编辑、可审计。
+
+🌐 了解更多:**[atomflow-ai.com](https://atomflow-ai.com/)**。
 
 ## 📚 引用
 

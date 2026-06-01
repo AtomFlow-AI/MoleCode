@@ -11,6 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![Powered by RDKit](https://img.shields.io/badge/powered%20by-RDKit-green.svg)](https://www.rdkit.org/)
+[![Website](https://img.shields.io/badge/AtomFlow-atomflow--ai.com-0b7285.svg)](https://atomflow-ai.com/)
 
 [![Works with Claude Code](https://img.shields.io/badge/Works%20with-Claude%20Code-d97757.svg)](.claude/skills/molecode/)
 [![Works with Codex](https://img.shields.io/badge/Works%20with-Codex-412991.svg)](AGENTS.md)
@@ -243,6 +244,26 @@ AGENTS.md                # entrypoint for coding agents
 | ![](docs/assets/results_1_main.png) | ![](docs/assets/results_2_chemistry.png) | ![](docs/assets/results_3_scaling.png) | ![](docs/assets/results_4_long_molecules.png) | ![](docs/assets/results_5_extension.png) |
 
 ---
+
+## About AtomFlow
+
+MoleCode is built and maintained by **[AtomFlow](https://atomflow-ai.com/)**.
+
+AtomFlow builds **LLM-native AI for chemistry** — letting language models operate
+directly on molecular structure rather than on opaque strings. Our work centers on
+molecule-grounded applications, including:
+
+- **Molecular chat & interaction** — converse with a molecule; select atoms, bonds,
+  or fragments and edit them in natural language.
+- **Structure-aware editing** — auditable, graph-level molecular edits.
+- **Retrosynthesis** — LLM-native synthesis planning over explicit structures.
+- **Literature reading & structure parsing** — extracting structures from papers
+  and patents, including optical chemical structure recognition (OCSR).
+
+MoleCode is the open representation layer underneath these products — making
+molecular structure explicit, editable, and auditable for LLMs.
+
+🌐 Learn more at **[atomflow-ai.com](https://atomflow-ai.com/)**.
 
 ## 📚 Citation
 
