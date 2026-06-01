@@ -13,7 +13,7 @@ supply the API key and base URL; nothing is hard-coded.
     from molecode.prompts import MOLECULE_SYSTEM_PROMPT
 
     client = LLMClient(api_key="sk-...", base_url="https://api.openai.com/v1",
-                       model="gpt-4o-mini")
+                       model="gemini-3.1-pro-preview")
     answer = client.chat("How many carbons are in this graph? ...",
                          system=MOLECULE_SYSTEM_PROMPT)
 
@@ -21,7 +21,7 @@ Credentials may also come from the environment (so you never commit a key):
 
     MOLECODE_API_KEY   (or OPENAI_API_KEY)   — required
     MOLECODE_BASE_URL  — default https://api.openai.com/v1
-    MOLECODE_MODEL     — default gpt-4o-mini
+    MOLECODE_MODEL     — default gemini-3.1-pro-preview
 
 Prefer the official ``openai`` SDK? You don't need this class at all — the
 MoleCode prompts are plain strings, so pass them straight to
@@ -37,7 +37,7 @@ import urllib.request
 from typing import Any, Dict, List, Optional
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
-DEFAULT_MODEL = "gpt-4o-mini"
+DEFAULT_MODEL = "gemini-3.1-pro-preview"
 
 _IMAGE_MIME = {
     ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
@@ -74,7 +74,8 @@ class LLMClient:
         Chat-completions base URL (without the ``/chat/completions`` suffix).
         Falls back to ``$MOLECODE_BASE_URL`` then ``https://api.openai.com/v1``.
     model:
-        Default model name. Falls back to ``$MOLECODE_MODEL`` then ``gpt-4o-mini``.
+        Default model name. Falls back to ``$MOLECODE_MODEL`` then
+        ``gemini-3.1-pro-preview``.
     timeout:
         Per-request timeout in seconds.
     default_temperature:
