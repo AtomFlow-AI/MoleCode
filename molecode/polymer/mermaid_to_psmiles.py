@@ -93,6 +93,70 @@ _EDGE_RE = re.compile(
 
 _NODE_RE = re.compile(r'^\s+(\w+)\[([^\]]+)\]\s*$')
 
+# Absolute CIP chirality suffix on an atom id, e.g. ``B0_C2_R`` → "R".
+# The preceding char is always a digit (the per-element counter), so this never
+# collides with an element symbol such as sulfur (``B0_S1``).
+_CHIRAL_RE = re.compile(r'\d_([RS])$')
+
+
+# ── Stereochemistry restoration (after sanitize / full topology) ──────────────
+
+def _restore_chirality(mol: RWMol, idx_to_cip: dict[int, str]) -> None:
+    """Restore absolute CIP R/S by brute-forcing the chiral tag.
+
+    CW/CCW is order-dependent, so we try each tag, recompute CIP, and keep the
+    one whose ``_CIPCode`` matches the desired absolute label (mirrors the
+    small-molecule converter).
+    """
+    if not idx_to_cip:
+        return
+    for idx, desired in idx_to_cip.items():
+        atom = mol.GetAtomWithIdx(idx)
+        matched = False
+        for tag in (Chem.ChiralType.CHI_TETRAHEDRAL_CW,
+                    Chem.ChiralType.CHI_TETRAHEDRAL_CCW):
+            atom.SetChiralTag(tag)
+            try:
+                Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
+            except Exception:
+                continue
+            if atom.HasProp('_CIPCode') and atom.GetProp('_CIPCode') == desired:
+                matched = True
+                break
+        if not matched:
+            atom.SetChiralTag(Chem.ChiralType.CHI_UNSPECIFIED)
+    try:
+        Chem.AssignStereochemistry(mol, cleanIt=False, force=True)
+    except Exception:
+        pass
+
+
+def _restore_double_bond_stereo(mol: RWMol, records: list) -> None:
+    """Restore ===|E| / ===|Z| double-bond configuration.
+
+    Sets the double-bond stereo + reference atoms, then derives the neighbouring
+    single-bond directions so the SMILES writer actually emits ``/`` and ``\``.
+    """
+    applied = False
+    for idx1, idx2, stereo in records:
+        bond = mol.GetBondBetweenAtoms(idx1, idx2)
+        if bond is None:
+            continue
+        n1 = [n.GetIdx() for n in mol.GetAtomWithIdx(idx1).GetNeighbors()
+              if n.GetIdx() != idx2]
+        n2 = [n.GetIdx() for n in mol.GetAtomWithIdx(idx2).GetNeighbors()
+              if n.GetIdx() != idx1]
+        if n1 and n2:
+            bond.SetStereoAtoms(n1[0], n2[0])
+            bond.SetStereo(Chem.BondStereo.STEREOE if stereo == 'E'
+                           else Chem.BondStereo.STEREOZ)
+            applied = True
+    if applied:
+        try:
+            Chem.SetDoubleBondNeighborDirections(mol)
+        except Exception:
+            pass
+
 
 # ── Main converter ────────────────────────────────────────────────────────────
 
@@ -107,6 +171,7 @@ def mermaid_to_psmiles(mermaid: str) -> Optional[str]:
 
     # 1. Collect node declarations (skip TL / TR terminus nodes)
     nodes: dict[str, tuple[str, int]] = {}  # nid → (element, formal_charge)
+    chirality: dict[str, str] = {}          # nid → "R" / "S"
     for line in lines:
         m = _NODE_RE.match(line)
         if m:
@@ -117,10 +182,13 @@ def mermaid_to_psmiles(mermaid: str) -> Optional[str]:
                 symbol, charge = parse_element(label)
                 nodes[nid] = (symbol, charge)
             except ValueError:
-                pass
+                continue
+            cm = _CHIRAL_RE.search(nid)
+            if cm:
+                chirality[nid] = cm.group(1)
 
     # 2. Collect edges and identify attachment nodes
-    edges: list[tuple[str, Chem.BondType, str]] = []
+    edges: list[tuple[str, Chem.BondType, str, Optional[str]]] = []
     entry_nodes: set[str] = set()
     exit_nodes:  set[str] = set()
 
@@ -130,6 +198,7 @@ def mermaid_to_psmiles(mermaid: str) -> Optional[str]:
             continue
         a, bond_sym, b = m.group(1), m.group(2), m.group(3)
         bt = _BOND_MAP.get(bond_sym, Chem.BondType.SINGLE)
+        ez = 'E' if bond_sym == '===|E|' else ('Z' if bond_sym == '===|Z|' else None)
 
         if a == "TL":
             entry_nodes.add(b)
@@ -141,7 +210,7 @@ def mermaid_to_psmiles(mermaid: str) -> Optional[str]:
             exit_nodes.add(b)
         else:
             if a in nodes and b in nodes:
-                edges.append((a, bt, b))
+                edges.append((a, bt, b, ez))
 
     if not entry_nodes or not exit_nodes:
         return None
@@ -166,12 +235,15 @@ def mermaid_to_psmiles(mermaid: str) -> Optional[str]:
     ap_left  = rw.AddAtom(Chem.Atom(0))
     ap_right = rw.AddAtom(Chem.Atom(0))
 
-    for a, bt, b in edges:
+    stereo_records: list[tuple[int, int, str]] = []  # (idx1, idx2, 'E'/'Z')
+    for a, bt, b, ez in edges:
         if a in nid_to_idx and b in nid_to_idx:
             try:
                 rw.AddBond(nid_to_idx[a], nid_to_idx[b], bt)
             except Exception:
                 return None
+            if ez:
+                stereo_records.append((nid_to_idx[a], nid_to_idx[b], ez))
 
     if entry_nid not in nid_to_idx or exit_nid not in nid_to_idx:
         return None
@@ -190,6 +262,12 @@ def mermaid_to_psmiles(mermaid: str) -> Optional[str]:
             )
         except Exception:
             return None
+
+    # 5. Restore stereochemistry (R/S and E/Z) after the full topology exists.
+    _restore_chirality(
+        rw, {nid_to_idx[n]: cip for n, cip in chirality.items() if n in nid_to_idx}
+    )
+    _restore_double_bond_stereo(rw, stereo_records)
 
     return Chem.MolToSmiles(rw)
 

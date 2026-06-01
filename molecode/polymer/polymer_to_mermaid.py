@@ -122,12 +122,15 @@ class RepeatUnitConverter:
         symbol = atom.GetSymbol()
         self._element_counter[symbol] += 1
         cnt = self._element_counter[symbol]
-        chiral = atom.GetChiralTag()
+        # 使用 RDKit 计算的绝对 CIP 构型（_CIPCode），而不是把
+        # CHI_TETRAHEDRAL_CW/CCW 直接当 R/S —— CW/CCW 依赖原子顺序，
+        # 只有 _CIPCode 才是可序列化的绝对 R/S 标签。
+        # AssignStereochemistry 已在 convert() 中调用，确保 _CIPCode 存在。
         suffix = ""
-        if chiral == Chem.ChiralType.CHI_TETRAHEDRAL_CW:
-            suffix = "_R"
-        elif chiral == Chem.ChiralType.CHI_TETRAHEDRAL_CCW:
-            suffix = "_S"
+        if atom.HasProp("_CIPCode"):
+            cip = atom.GetProp("_CIPCode")
+            if cip in ("R", "S"):
+                suffix = f"_{cip}"
         return f"{self.prefix}_{symbol}{cnt}{suffix}"
 
     def convert(self) -> Tuple[List[str], str, str]:
