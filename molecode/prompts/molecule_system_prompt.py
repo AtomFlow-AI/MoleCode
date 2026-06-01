@@ -1,4 +1,4 @@
-BASE_INSTRUCTION = '''
+BASE_INSTRUCTION = r'''
 # Mermaid Molecular Graph Syntax Specification
 
 > Complete syntax definition and parser requirements for Mermaid molecular graphs based on the MolToGraph project
