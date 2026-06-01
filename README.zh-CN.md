@@ -239,7 +239,7 @@ AGENTS.md                # 面向编码智能体的入口
 
 ## 关于 AtomFlow
 
-MoleCode 由 **[AtomFlow(原子流动)](https://atomflow-ai.com/)** 开发与维护。
+MoleCode 由 **[AtomFlow(原子流)](https://atomflow-ai.com/)** 开发与维护。
 
 AtomFlow 专注于 **LLM-native 的 AI 化学**——让语言模型直接在分子结构上操作,而不是面对晦涩的字符串。
 我们的工作以"以分子为中心"的应用为主,包括:
