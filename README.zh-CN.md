@@ -123,7 +123,7 @@ python .claude/skills/molecode/scripts/molecode_convert.py molecode-to-smiles --
 `compare`(支持缩写感知的图同构)和 `doctor`,以及一份供手工编辑图的语法参考,和一套面向大分子的
 基于文件的编辑工作流。详见 [`.claude/skills/molecode/SKILL.md`](.claude/skills/molecode/SKILL.md)。
 
-## 三个领域,一套文法
+## 三个领域，一套语法
 
 ### 🧪 小分子 — [`molecode.molecule`](molecode/molecule)
 
