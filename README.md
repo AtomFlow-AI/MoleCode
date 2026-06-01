@@ -4,6 +4,8 @@
 
 ### An LLM-native, graph-explicit molecular language
 
+**From molecular strings to structural code: enabling LLMs to operate on chemistry directly.**
+
 *Stop making language models reconstruct molecular structure from cryptic strings — let them read, write, and edit structure directly.*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -148,6 +150,32 @@ from molecode.molecule import mol_to_mermaid          # your molecule -> what th
 from molecode.molecule import mermaid_to_mol           # model output -> validated RDKit Mol
 ```
 
+### Calling an LLM
+
+MoleCode is just a representation, so you can use **any** LLM SDK — the prompts
+are plain strings. For convenience the package also ships a tiny,
+dependency-free, **OpenAI-compatible** client (`molecode.llm.LLMClient`, built on
+stdlib `urllib`). You supply the API key and base URL — nothing is hard-coded, so
+it works with OpenAI, DeepSeek, Azure, Together, vLLM, Ollama, …
+
+```python
+from molecode import LLMClient
+from molecode.prompts import MOLECULE_SYSTEM_PROMPT
+from molecode.molecule import mol_to_mermaid, mermaid_to_mol
+from rdkit import Chem
+
+client = LLMClient(api_key="sk-...", base_url="https://api.openai.com/v1", model="gpt-4o-mini")
+# (or set MOLECODE_API_KEY / MOLECODE_BASE_URL / MOLECODE_MODEL and call LLMClient())
+
+graph = mol_to_mermaid(Chem.MolFromSmiles("CC(=O)Oc1ccccc1C(=O)O"), name="Aspirin")
+reply = client.chat(f"How many carbons are in this molecule?\n```mermaid\n{graph}\n```",
+                    system=MOLECULE_SYSTEM_PROMPT)
+print(reply)
+```
+
+Prefer the official `openai` SDK? Pass the same prompt strings straight to
+`openai.OpenAI().chat.completions.create(...)` — you don't need `LLMClient` at all.
+
 See [docs/05-tasks.md](docs/05-tasks.md) for the full task catalog.
 
 | Domain | Understanding | Generation | Editing | Reasoning |
@@ -165,7 +193,8 @@ molecode/                # the library (pip-installable)
 ├── molecule/            # small-molecule  <-> Mermaid  (rdkit_to_mermaid, mermaid_to_rdkit)
 ├── polymer/             # polymer         <-> Mermaid  (polymer_to_mermaid, mermaid_to_psmiles)
 ├── markush/             # Markush         <-> Mermaid  + egl_graph isomorphism + abbreviation_map
-└── prompts/             # LLM system prompts (molecule + markush grammars)
+├── prompts/             # LLM system prompts (molecule + markush grammars)
+└── llm.py               # optional OpenAI-compatible client (you supply key + base_url)
 examples/                # 7 runnable demos (round-trips + 4 task families)
 docs/                    # overview, syntax, polymers, markush, tasks, why-it-works
 ```

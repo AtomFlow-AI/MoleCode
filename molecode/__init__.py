@@ -32,6 +32,9 @@ from .molecule import (
     mol_to_inchi,
 )
 
+# Optional, dependency-free OpenAI-compatible client for driving LLM tasks.
+from .llm import LLMClient
+
 __version__ = "0.1.0"
 
 __all__ = [
@@ -39,6 +42,7 @@ __all__ = [
     "polymer",
     "markush",
     "prompts",
+    "LLMClient",
     "mol_to_mermaid",
     "mermaid_to_mol",
     "mol_to_smiles",

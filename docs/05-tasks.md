@@ -16,6 +16,18 @@ MoleCode is a drop-in representation for an LLM. The pattern is always the same:
 Runnable demos for every family live in [`../examples/`](../examples) (offline by
 default; set `MOLECODE_API_KEY` to call a model).
 
+> **Calling a model.** Use any LLM SDK — the prompts are plain strings — or the
+> bundled dependency-free, OpenAI-compatible client. You supply the key and URL:
+>
+> ```python
+> from molecode import LLMClient
+> client = LLMClient(api_key="sk-...", base_url="https://api.openai.com/v1", model="gpt-4o-mini")
+> reply = client.chat(user_prompt, system=MOLECULE_SYSTEM_PROMPT)
+> ```
+>
+> Credentials can instead come from `MOLECODE_API_KEY` / `MOLECODE_BASE_URL` /
+> `MOLECODE_MODEL`, so you never commit a key.
+
 ## 1. Understanding — [`examples/04_understanding.py`](../examples/04_understanding.py)
 
 Read a structure, answer a structural question. Because every atom is an explicit

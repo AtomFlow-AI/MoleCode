@@ -20,7 +20,8 @@ python examples/01_molecule_roundtrip.py
 ## The four LLM task families
 
 Examples 04–07 each build the exact prompt you would send to any LLM and pass it
-through `examples/_llm.py`. They run **offline by default** — with no API key set
+through `examples/_llm.py` (a thin wrapper over the library's
+`molecode.llm.LLMClient`). They run **offline by default** — with no API key set
 they print the assembled system + user prompt (a "dry run"), so you can see
 precisely what MoleCode sends. To actually call a model, set environment
 variables (any OpenAI-compatible endpoint works):
@@ -32,8 +33,16 @@ export MOLECODE_MODEL="gpt-4o-mini"                    # or any chat model
 python examples/04_understanding.py
 ```
 
-MoleCode itself never calls an LLM — `_llm.py` is only a convenience so the
-examples are copy-pasteable into your own pipeline. The reusable ingredients are:
+In your own code, use the client directly (api key + url are yours to supply):
+
+```python
+from molecode import LLMClient
+client = LLMClient(api_key="sk-...", base_url="https://api.openai.com/v1", model="gpt-4o-mini")
+reply = client.chat(user_prompt, system=system_prompt)
+```
+
+MoleCode itself never calls an LLM — the client is an optional, dependency-free
+convenience. The reusable ingredients are:
 
 * `molecode.prompts.MOLECULE_SYSTEM_PROMPT` / `MARKUSH_SYSTEM_PROMPT` — the
   grammar specification you give the model as a system prompt;
