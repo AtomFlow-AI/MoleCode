@@ -51,7 +51,8 @@ The six conversion forms: `smiles-to-molecode` / `molecode-to-smiles`
 
 ```bash
 pip install -e .          # installs rdkit + networkx; makes `molecode` importable
-pytest tests/             # stereochemistry round-trip tests (rdkit + networkx required)
+python examples/01_molecule_roundtrip.py                       # smoke check
+python .claude/skills/molecode/scripts/molecode_convert.py doctor
 ```
 
 If dependencies are missing, run the CLI `doctor` command and see
