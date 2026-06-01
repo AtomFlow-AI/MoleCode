@@ -1,23 +1,23 @@
 """
-缩写基团 → EGL 子图 展开映射表
+Abbreviation group -> EGL subgraph expansion map.
 
-两种展开类型：
-1. single_atom_label: 缩写等价于一个原子标签 (如 Me -> [CH3])
-2. subgraph: 缩写展开为多个原子+键的子图 (如 Boc -> OC(=O)C(C)(C)C)
+Two expansion types:
+1. single_atom_label: the abbreviation is equivalent to a single atom label (e.g. Me -> [CH3])
+2. subgraph: the abbreviation expands to a multi-atom + bond subgraph (e.g. Boc -> OC(=O)C(C)(C)C)
 
-对于 R groups (R, R1, R2...) 和通用占位符 (X, Y, Z, Ar)，
-不展开，保留为缩写标签——它们代表可变基团，没有唯一展开。
+R groups (R, R1, R2...) and generic placeholders (X, Y, Z, Ar) are not expanded;
+they are kept as abbreviation labels because they represent variable groups with no unique expansion.
 """
 
 # ============================================================
-# 单原子展开 (缩写 ↔ 单个原子标签)
+# Single-atom expansion (abbreviation <-> single atom label)
 # ============================================================
 
 SINGLE_ATOM_MAP = {
     # Alkyl
     "Me": "CH3",
     "CH3": "CH3",
-    "Et": "CH2",       # Et 作为取代基时连接端是 CH2
+    "Et": "CH2",       # Et as a substituent: the connecting end is CH2
     "CH2CH3": "CH2",
 
     # Halogens / small groups (already atom-like)
@@ -27,11 +27,11 @@ SINGLE_ATOM_MAP = {
     "I": "I",
 
     # Functional groups that map to single atom with properties
-    "CN": "C",          # -C≡N 的连接碳 (需要子图展开更准确，但单原子近似)
+    "CN": "C",          # -C=N: the connecting carbon (subgraph expansion is more accurate, but single-atom is a useful approximation)
     "NC": "N",
     "N3": "N",
     "NO": "N",
-    "CHO": "CH",        # 醛基的碳
+    "CHO": "CH",        # Aldehyde carbon
 
     # Charged atoms
     "NH3+": "NH3(+)",
@@ -50,10 +50,10 @@ SINGLE_ATOM_MAP = {
 }
 
 # ============================================================
-# 子图展开 (缩写 → 多原子子图)
+# Subgraph expansion (abbreviation -> multi-atom subgraph)
 # ============================================================
-# 格式: {"atoms": [(id, label), ...], "bonds": [(id1, id2, type), ...], "attach": id}
-# attach 是连接点（与父图连接的原子）
+# Format: {"atoms": [(id, label), ...], "bonds": [(id1, id2, type), ...], "attach": id}
+# attach is the attachment point (the atom that connects to the parent graph)
 
 SUBGRAPH_MAP = {
     "Boc": {
@@ -518,8 +518,8 @@ SUBGRAPH_MAP = {
 }
 
 # ============================================================
-# 不展开的标签（R groups、通用占位符）
-# 这些在图同构比较中直接按名称匹配
+# Non-expandable labels (R groups, generic placeholders)
+# These are matched directly by name during graph isomorphism comparison
 # ============================================================
 
 NON_EXPANDABLE = {
@@ -560,7 +560,7 @@ NON_EXPANDABLE = {
 
 
 def build_expand_map():
-    """构建完整的展开映射表，供 egl_graph.egl_isomorphic 使用"""
+    """Build the complete expansion map for use by egl_graph.egl_isomorphic."""
     expand_map = {}
 
     # Single atom expansions

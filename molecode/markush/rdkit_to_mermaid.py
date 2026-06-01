@@ -1,11 +1,11 @@
 """
-将RDKit Mol对象转换为Mermaid Graph格式
+Convert RDKit Mol objects to Mermaid Graph format
 
-主要功能：
-1. 从Mol对象提取原子和键信息
-2. 处理立体化学（E/Z构型）
-3. 生成Mermaid图语法
-4. 支持自定义命名和子图组织
+Main features:
+1. Extract atom and bond information from a Mol object
+2. Handle stereochemistry (E/Z configuration)
+3. Generate Mermaid graph syntax
+4. Support custom naming and subgraph organization
 """
 
 from typing import List, Tuple, Dict, Optional
@@ -15,50 +15,50 @@ from collections import defaultdict
 
 
 class MolToMermaidConverter:
-    """将RDKit Mol对象转换为Mermaid Graph格式"""
+    """Convert an RDKit Mol object to Mermaid Graph format"""
 
-    # 键类型映射：RDKit → Mermaid
+    # Bond type mapping: RDKit -> Mermaid
     BOND_TYPE_MAP = {
         Chem.BondType.SINGLE: '---',
         Chem.BondType.DOUBLE: '===',
         Chem.BondType.TRIPLE: '-.-',
-        Chem.BondType.AROMATIC: '<-->',  #非必要不使用，尽量使用凯酷勒式
+        Chem.BondType.AROMATIC: '<-->',  # avoid unless necessary; prefer Kekule form
         Chem.BondType.DATIVE: '-->',
     }
 
     def __init__(self, subgraph_name: str = "Molecule"):
         """
-        初始化转换器
+        Initialize the converter
 
         Args:
-            subgraph_name: 子图名称（用于Mermaid subgraph声明）
+            subgraph_name: subgraph name (used in the Mermaid subgraph declaration)
         """
         self.subgraph_name = subgraph_name
         self.atom_id_map: Dict[int, str] = {}  # atom_idx -> atom_id
-        self.element_counter: Dict[str, int] = defaultdict(int)  # 元素计数器
+        self.element_counter: Dict[str, int] = defaultdict(int)  # element counter
 
     def _sanitize_identifier(self, name: str) -> str:
         """
-        清理字符串使其成为合法的Mermaid标识符
+        Clean a string so it is a valid Mermaid identifier
 
-        移除特殊字符，只保留字母、数字、中文
-        例如: "(E)-2-丁烯" → "E2丁烯"
+        Removes special characters, keeping only letters, digits, and underscores.
+        Example: "(E)-2-Butene" -> "E2Butene"
 
         Args:
-            name: 原始名称
+            name: original name
 
         Returns:
-            合法的标识符（只包含字母、数字、中文）
+            valid identifier (letters and digits only)
         """
         import re
-        # 只保留字母、数字、中文，移除其他所有字符
+        # Keep only letters and digits; remove everything else
         sanitized = re.sub(r'[^a-zA-Z0-9\u4e00-\u9fff]', '', name)
 
-        # 确保不以数字开头
+        # Ensure it does not start with a digit
         if sanitized and sanitized[0].isdigit():
             sanitized = 'M' + sanitized
 
-        # 如果清理后为空，使用默认名称
+        # If sanitization leaves an empty string, use the default name
         if not sanitized:
             sanitized = 'Molecule'
 
@@ -66,63 +66,63 @@ class MolToMermaidConverter:
 
     def convert(self, mol: Chem.Mol) -> str:
         """
-        将RDKit Mol转换为Mermaid Graph文本
+        Convert an RDKit Mol to Mermaid Graph text
 
         Args:
-            mol: RDKit Mol对象
+            mol: RDKit Mol object
 
         Returns:
-            Mermaid格式的图文本
+            Mermaid-format graph text
         """
         if mol is None:
             return ""
 
-        # 创建副本避免修改原始分子
+        # Create a copy to avoid modifying the original molecule
         mol = Chem.Mol(mol)
 
-        # 确保立体化学信息被正确分配（包括手性）
+        # Ensure stereochemistry information is correctly assigned (including chirality)
         try:
             Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
         except Exception:
             pass
 
-        # 将芳香分子转换为凯库勒式（显式单双键）
-        # Graph只能表示显式键，不能表示芳香性
+        # Convert aromatic molecules to Kekule form (explicit single/double bonds)
+        # Graphs can only represent explicit bonds, not aromaticity
         try:
             Chem.Kekulize(mol, clearAromaticFlags=True)
         except Exception:
-            # 如果凯库勒化失败（某些奇怪的结构），继续处理
+            # If Kekulization fails (unusual structures), continue processing
             pass
 
-        # 重置计数器
+        # Reset counters
         self.atom_id_map = {}
         self.element_counter = defaultdict(int)
 
-        # 1. 提取原子信息
+        # 1. Extract atom information
         atoms_info = self._extract_atoms(mol)
 
-        # 2. 提取键信息
+        # 2. Extract bond information
         bonds_info = self._extract_bonds(mol)
 
-        # 3. 生成Mermaid文本
+        # 3. Generate Mermaid text
         return self._generate_mermaid(atoms_info, bonds_info)
 
     def _extract_atoms(self, mol: Chem.Mol) -> List[Tuple[str, str, bool]]:
         """
-        提取原子信息
+        Extract atom information
 
         Args:
-            mol: RDKit Mol对象
+            mol: RDKit Mol object
 
         Returns:
-            [(atom_id, label, is_abbreviation), ...] 列表
+            list of [(atom_id, label, is_abbreviation), ...]
         """
         atoms = []
 
         for atom in mol.GetAtoms():
             idx = atom.GetIdx()
 
-            # 生成原子ID（唯一标识符，包含手性信息）
+            # Generate atom ID (unique identifier, includes chirality information)
             atom_id = self._generate_atom_id(atom)
             self.atom_id_map[idx] = atom_id
 
@@ -131,7 +131,7 @@ class MolToMermaidConverter:
                 label = atom.GetProp("_abbreviation")
                 atoms.append((atom_id, label, True))
             else:
-                # 生成显示标签
+                # Generate the display label
                 label = self._generate_atom_label(atom)
                 atoms.append((atom_id, label, False))
 
@@ -139,66 +139,66 @@ class MolToMermaidConverter:
 
     def _generate_atom_id(self, atom: Chem.Atom) -> str:
         """
-        生成原子ID
+        Generate an atom ID
 
         Args:
-            atom: RDKit Atom对象
+            atom: RDKit Atom object
 
         Returns:
-            原子ID，格式：SubgraphName_Symbol_Number 或 SubgraphName_Symbol_Number_Chirality
+            atom ID in the format: SubgraphName_Symbol_Number or SubgraphName_Symbol_Number_Chirality
         """
         symbol = atom.GetSymbol()
 
-        # Dummy Atom (*) -> use 'X' for valid identifier
+        # Dummy Atom (*) -> use 'X' for a valid identifier
         if symbol == '*' or atom.GetAtomicNum() == 0:
             symbol = 'X'
 
-        # 按元素类型计数
+        # Count by element type
         self.element_counter[symbol] += 1
         count = self.element_counter[symbol]
 
-        # 清理subgraph名称以生成合法的ID
+        # Sanitize the subgraph name to generate a valid ID
         clean_name = self._sanitize_identifier(self.subgraph_name)
 
-        # 基础ID
+        # Base ID
         base_id = f"{clean_name}_{symbol}_{count}"
 
-        # 使用 RDKit 计算出的绝对 CIP 构型，而不是直接把
-        # CHI_TETRAHEDRAL_CW/CCW 当作 R/S。CW/CCW 依赖原子顺序，
-        # 只有 _CIPCode 才是可序列化的绝对 R/S 标签。
+        # Use the absolute CIP configuration computed by RDKit rather than treating
+        # CHI_TETRAHEDRAL_CW/CCW directly as R/S. CW/CCW depends on atom ordering;
+        # only _CIPCode is a serializable absolute R/S label.
         if atom.HasProp('_CIPCode'):
             cip_code = atom.GetProp('_CIPCode')
             if cip_code in ('R', 'S'):
                 return f"{base_id}_{cip_code}"
 
-        # 无手性或未指定
+        # No chirality or unspecified
         return base_id
 
     def _generate_atom_label(self, atom: Chem.Atom) -> str:
         """
-        生成原子显示标签
+        Generate the display label for an atom
 
         Args:
-            atom: RDKit Atom对象
+            atom: RDKit Atom object
 
         Returns:
-            显示标签，如 'C', 'OH', 'NH2', 'N(+)', 'O(-)', 'O(2-)'
+            display label, e.g. 'C', 'OH', 'NH2', 'N(+)', 'O(-)', 'O(2-)'
         """
         symbol = atom.GetSymbol()
         total_h = atom.GetTotalNumHs()
         formal_charge = atom.GetFormalCharge()
 
-        # 构建标签
+        # Build the label
         label = symbol
 
-        # 添加氢
+        # Add hydrogens
         if total_h > 0:
             if total_h == 1:
                 label += 'H'
             else:
                 label += f'H{total_h}'
 
-        # 添加电荷（新格式：括号包裹，数字在前，符号在后）
+        # Add charge (new format: wrapped in parentheses, number first, then sign)
         if formal_charge != 0:
             if formal_charge == 1:
                 charge_str = '(+)'
@@ -214,13 +214,13 @@ class MolToMermaidConverter:
 
     def _extract_bonds(self, mol: Chem.Mol) -> List[Tuple[str, str, str]]:
         """
-        提取键信息
+        Extract bond information
 
         Args:
-            mol: RDKit Mol对象
+            mol: RDKit Mol object
 
         Returns:
-            [(atom1_id, atom2_id, bond_symbol), ...] 列表
+            list of [(atom1_id, atom2_id, bond_symbol), ...]
         """
         bonds = []
 
@@ -228,11 +228,11 @@ class MolToMermaidConverter:
             begin_idx = bond.GetBeginAtomIdx()
             end_idx = bond.GetEndAtomIdx()
 
-            # 获取原子ID
+            # Get atom IDs
             atom1_id = self.atom_id_map[begin_idx]
             atom2_id = self.atom_id_map[end_idx]
 
-            # 确定键符号（包括立体化学）
+            # Determine the bond symbol (including stereochemistry)
             bond_symbol = self._get_bond_symbol(bond)
 
             bonds.append((atom1_id, atom2_id, bond_symbol))
@@ -241,21 +241,21 @@ class MolToMermaidConverter:
 
     def _get_bond_symbol(self, bond: Chem.Bond) -> str:
         """
-        根据键类型和立体化学生成Mermaid键符号
+        Generate a Mermaid bond symbol based on bond type and stereochemistry
 
         Args:
-            bond: RDKit Bond对象
+            bond: RDKit Bond object
 
         Returns:
-            Mermaid键符号，如 '---', '===', '===|E|'
+            Mermaid bond symbol, e.g. '---', '===', '===|E|'
         """
         bond_type = bond.GetBondType()
         stereo = bond.GetStereo()
 
-        # 获取基础键符号
+        # Get the base bond symbol
         base_symbol = self.BOND_TYPE_MAP.get(bond_type, '---')
 
-        # 如果是双键且有立体化学信息
+        # If this is a double bond with stereochemistry information
         if bond_type == Chem.BondType.DOUBLE:
             if stereo == Chem.BondStereo.STEREOE:
                 return '===|E|'
@@ -271,46 +271,46 @@ class MolToMermaidConverter:
     def _generate_mermaid(self, atoms: List[Tuple[str, str, bool]],
                          bonds: List[Tuple[str, str, str]]) -> str:
         """
-        生成Mermaid Graph文本
+        Generate Mermaid Graph text
 
         Args:
-            atoms: 原子信息列表 [(atom_id, label, is_abbreviation), ...]
-            bonds: 键信息列表 [(atom1_id, atom2_id, bond_symbol), ...]
+            atoms: atom information list [(atom_id, label, is_abbreviation), ...]
+            bonds: bond information list [(atom1_id, atom2_id, bond_symbol), ...]
 
         Returns:
-            Mermaid格式的文本
+            Mermaid-format text
         """
         lines = []
 
-        # 图声明
+        # Graph declaration
         lines.append("graph TB")
 
-        # 添加注释显示原始分子名称
-        lines.append(f'    %% 原始分子名称: {self.subgraph_name}')
+        # Add a comment showing the original molecule name
+        lines.append(f'    %% Original molecule name: {self.subgraph_name}')
 
-        # 生成合法的subgraph ID
+        # Generate a valid subgraph ID
         subgraph_id = self._sanitize_identifier(self.subgraph_name)
 
-        # 子图开始
+        # Subgraph start
         lines.append(f'    subgraph {subgraph_id}["{self.subgraph_name}"]')
 
-        # 添加原子定义
+        # Add atom definitions
         for atom_id, label, is_abbrev in atoms:
             if is_abbrev:
-                # 缩写基团用花括号
+                # Abbreviation groups use curly braces
                 lines.append(f'        {atom_id}{{{label}}}')
             else:
-                # 普通原子用方括号
+                # Regular atoms use square brackets
                 lines.append(f'        {atom_id}[{label}]')
 
-        # 空行分隔
+        # Blank line separator
         lines.append('')
 
-        # 添加键连接
+        # Add bond connections
         for atom1_id, atom2_id, bond_symbol in bonds:
             lines.append(f'        {atom1_id} {bond_symbol} {atom2_id}')
 
-        # 子图结束
+        # Subgraph end
         lines.append('    end')
 
         return '\n'.join(lines)
@@ -318,14 +318,14 @@ class MolToMermaidConverter:
 
 def mol_to_mermaid(mol: Chem.Mol, name: str = "Molecule") -> str:
     """
-    将RDKit Mol转换为Mermaid Graph（便捷函数）
+    Convert an RDKit Mol to Mermaid Graph (convenience function)
 
     Args:
-        mol: RDKit Mol对象
-        name: 分子名称（用作subgraph名称）
+        mol: RDKit Mol object
+        name: molecule name (used as the subgraph name)
 
     Returns:
-        Mermaid格式的文本
+        Mermaid-format text
 
 
     """
@@ -337,90 +337,90 @@ if __name__ == "__main__":
     import os
 
     print("=" * 60)
-    print("RDKit Mol -> Mermaid Graph 转换测试")
+    print("RDKit Mol -> Mermaid Graph conversion test")
     print("=" * 60)
 
-    # 创建输出目录
+    # Create output directory
     output_dir = "mol_graphs"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-        print(f"创建输出目录: {output_dir}")
+        print(f"Created output directory: {output_dir}")
 
-    # 测试用例
+    # Test cases
     test_cases = [
         ("Aspirin", "Aspirin", "CC(=O)Oc1ccccc1C(=O)O"),
-        # ("苯", "Benzene", "c1ccccc1"),
-        # ("丙酮", "Acetone", "CC(=O)C"),
-        # ("乙炔", "Acetylene", "C#C"),
-        # ("(E)-2-丁烯", "E-2-Butene", r"C/C=C/C"),
-        # ("(Z)-2-丁烯", "Z-2-Butene", r"C/C=C\C"),
-        # ("乙酸", "AceticAcid", "CC(=O)O"),
-        # ("甲胺", "Methylamine", "CN"),
-        # ("毒素", "Palytoxin", "CC1CC2(C(OC(C1)(O2)CCCCCCCC(CC3C(C(C(C(O3)(CC(C(C)C=CC(CCC(C(C4CC(C(C(O4)CC(C(CC5C(C(C(C(O5)CC(C=CC=CCC(C(C(CC=CC(=C)CCC(C(C(C(C)CC6C(C(C(C(O6)C=CC(C(CC7CC8CC(O7)C(O8)CCC9C(CC(O9)CN)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)CC(C)CCCCCC(C(C(C(C(C1C(C(C(C(O1)CC(C(C(=CC(CC(C)C(C(=O)NC=CC(=O)NCCCO)O)O)C)O)O)O)O)O)O)O)O)O)O)C"),
+        # ("Benzene", "Benzene", "c1ccccc1"),
+        # ("Acetone", "Acetone", "CC(=O)C"),
+        # ("Acetylene", "Acetylene", "C#C"),
+        # ("(E)-2-Butene", "E-2-Butene", r"C/C=C/C"),
+        # ("(Z)-2-Butene", "Z-2-Butene", r"C/C=C\C"),
+        # ("Acetic acid", "AceticAcid", "CC(=O)O"),
+        # ("Methylamine", "Methylamine", "CN"),
+        # ("Palytoxin", "Palytoxin", "CC1CC2(C(OC(C1)(O2)CCCCCCCC(CC3C(C(C(C(O3)(CC(C(C)C=CC(CCC(C(C4CC(C(C(O4)CC(C(CC5C(C(C(C(O5)CC(C=CC=CCC(C(C(CC=CC(=C)CCC(C(C(C(C)CC6C(C(C(C(O6)C=CC(C(CC7CC8CC(O7)C(O8)CCC9C(CC(O9)CN)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)O)CC(C)CCCCCC(C(C(C(C(C1C(C(C(C(O1)CC(C(C(=CC(CC(C)C(C(=O)NC=CC(=O)NCCCO)O)O)C)O)O)O)O)O)O)O)O)O)O)C"),
         # ("Mol1","Example","O=C1C(O)=C(c2c(C3=COc4c(C3)cccc4)c(O)cc(O)c2)Oc5cc(O)cc(O)c51")
     ]
 
-    # 索引文件内容
-    index_content = ["# 分子图库\n", "## 目录\n\n"]
+    # Index file content
+    index_content = ["# Molecule Graph Library\n", "## Contents\n\n"]
 
-    for i, (name_cn, name_en, smiles) in enumerate(test_cases, 1):
-        print(f"\n[{i}/{len(test_cases)}] 处理: {name_cn} ({name_en})")
+    for i, (name_en_display, name_en, smiles) in enumerate(test_cases, 1):
+        print(f"\n[{i}/{len(test_cases)}] Processing: {name_en_display} ({name_en})")
 
-        # 从SMILES创建Mol
+        # Create Mol from SMILES
         mol = Chem.MolFromSmiles(smiles)
 
         if mol is None:
-            print(f"  ✗ 无法解析SMILES: {smiles}")
+            print(f"  x Cannot parse SMILES: {smiles}")
             continue
 
-        # 转换为Mermaid
-        mermaid_text = mol_to_mermaid(mol, name_cn)
+        # Convert to Mermaid
+        mermaid_text = mol_to_mermaid(mol, name_en_display)
 
-        # 获取分子式
+        # Get molecular formula
         from rdkit.Chem import rdMolDescriptors
         formula = rdMolDescriptors.CalcMolFormula(mol)
 
-        # 生成MD文件内容
-        md_content = f"""# {name_cn} ({name_en})
+        # Generate MD file content
+        md_content = f"""# {name_en_display} ({name_en})
 
-## 基本信息
+## Basic Information
 
 - **SMILES**: `{smiles}`
-- **分子式**: {formula}
+- **Formula**: {formula}
 
-## 分子结构图
+## Molecular Structure Graph
 
 ```mermaid
 {mermaid_text}
 ```
 
-## 说明
+## Notes
 
-此图由RDKit自动生成，展示了分子的拓扑结构和键类型。
+This graph was automatically generated by RDKit and shows the molecular topology and bond types.
 """
 
-        # 写入文件
+        # Write to file
         filename = f"{name_en}.md"
         filepath = os.path.join(output_dir, filename)
 
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(md_content)
 
-        print(f"  ✓ 已生成: {filepath}")
+        print(f"  Generated: {filepath}")
 
-        # 添加到索引
-        index_content.append(f"{i}. [{name_cn} ({name_en})](./{output_dir}/{filename}) - `{smiles}`\n")
+        # Add to index
+        index_content.append(f"{i}. [{name_en_display} ({name_en})](./{output_dir}/{filename}) - `{smiles}`\n")
 
-    # 生成索引文件
-    index_content.append("\n---\n\n*由 RDKit 自动生成*\n")
+    # Generate index file
+    index_content.append("\n---\n\n*Automatically generated by RDKit*\n")
     index_path = os.path.join(output_dir, "INDEX.md")
 
     with open(index_path, 'w', encoding='utf-8') as f:
         f.writelines(index_content)
 
-    print(f"\n✓ 索引文件已生成: {index_path}")
+    print(f"\nIndex file generated: {index_path}")
 
     print("\n" + "=" * 60)
-    print(f"所有测试完成！共生成 {len(test_cases)} 个文件")
-    print(f"输出目录: {os.path.abspath(output_dir)}")
+    print(f"All tests complete! Generated {len(test_cases)} file(s)")
+    print(f"Output directory: {os.path.abspath(output_dir)}")
     print("=" * 60)

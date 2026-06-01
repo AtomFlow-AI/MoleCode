@@ -1,18 +1,19 @@
 """
 polymer_to_mermaid.py
 
-将高分子（重复单元）转换为 Mermaid Graph 格式，使用 subgraph 表示 Repeat Unit，
-支持均聚物和嵌段共聚物。
+Converts polymers (repeat units) to Mermaid Graph format, using subgraph to represent
+Repeat Units, supporting homopolymers and block copolymers.
 
-与 rdkit_to_mermaid.py 风格保持一致，可直接集成到 ChemIQ 评测体系。
+Consistent with the style of rdkit_to_mermaid.py; can be integrated directly into
+the ChemIQ evaluation framework.
 
-用法示例（从 mgl_code/ 目录运行）：
-    python3 polymer_to_mermaid.py                    # 运行内置演示
-    python3 polymer_to_mermaid.py --smiles "*CC*" --n 100   # 自定义输入
+Usage examples (run from the mgl_code/ directory):
+    python3 polymer_to_mermaid.py                    # run the built-in demo
+    python3 polymer_to_mermaid.py --smiles "*CC*" --n 100   # custom input
 
-重复单元 SMILES 约定：
-    - 使用 * 标记两个连接点，例如 "*CC*" (聚乙烯 repeat unit)
-    - 第一个 * 对应左侧连接，第二个 * 对应右侧连接
+Repeat unit SMILES convention:
+    - Use * to mark the two attachment points, e.g. "*CC*" (polyethylene repeat unit)
+    - The first * corresponds to the left connection, the second * to the right connection
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from rdkit import Chem
 from rdkit.Chem import rdMolDescriptors
 
 
-# ── 键类型映射（与 rdkit_to_mermaid.py 保持一致）──────────────────────────────
+# ── Bond type map (consistent with rdkit_to_mermaid.py) ──────────────────────
 
 BOND_TYPE_MAP = {
     Chem.BondType.SINGLE:   "---",
@@ -37,35 +38,35 @@ BOND_TYPE_MAP = {
 }
 
 
-# ── 数据结构 ───────────────────────────────────────────────────────────────────
+# ── Data structures ────────────────────────────────────────────────────────────
 
 @dataclass
 class BlockSpec:
-    """描述共聚物中一个嵌段。"""
-    smiles: str               # 含两个 * 连接点的 SMILES，如 "*CC*"
-    n: int                    # 重复次数
-    label: Optional[str] = None  # 显示标签（None 则自动生成）
+    """Describes one block in a copolymer."""
+    smiles: str               # SMILES with two * attachment points, e.g. "*CC*"
+    n: int                    # repeat count
+    label: Optional[str] = None  # display label (None = auto-generated)
 
 
 @dataclass
 class PolymerSpec:
-    """完整高分子描述。"""
+    """Complete polymer description."""
     blocks: List[BlockSpec]
-    terminus_left:  Optional[str] = None  # 左端基 SMILES（如 "C" 表示甲基）
-    terminus_right: Optional[str] = None  # 右端基 SMILES
+    terminus_left:  Optional[str] = None  # left end-group SMILES (e.g. "C" for methyl)
+    terminus_right: Optional[str] = None  # right end-group SMILES
     name: str = "Polymer"
 
 
-# ── 原子/键标签工具函数（与 rdkit_to_mermaid._generate_atom_label 对应）────────
+# ── Atom/bond label utilities (counterpart to rdkit_to_mermaid._generate_atom_label) ──
 
 def _sanitize_id(s: str) -> str:
-    """生成合法的 Mermaid 节点 ID（只保留字母数字）。"""
+    """Generate a valid Mermaid node ID (keep only alphanumeric characters)."""
     cleaned = re.sub(r"[^a-zA-Z0-9]", "", s)
     return ("M" + cleaned) if cleaned and cleaned[0].isdigit() else (cleaned or "M")
 
 
 def _atom_label(atom: Chem.Atom) -> str:
-    """生成原子显示标签，与 rdkit_to_mermaid._generate_atom_label 逻辑一致。"""
+    """Generate the atom display label, consistent with rdkit_to_mermaid._generate_atom_label logic."""
     symbol = atom.GetSymbol()
     total_h = atom.GetTotalNumHs()
     charge = atom.GetFormalCharge()
@@ -87,7 +88,7 @@ def _atom_label(atom: Chem.Atom) -> str:
 
 
 def _bond_symbol(bond: Chem.Bond) -> str:
-    """获取键的 Mermaid 符号（含立体化学）。"""
+    """Get the Mermaid symbol for a bond (including stereochemistry)."""
     bt = bond.GetBondType()
     stereo = bond.GetStereo()
     base = BOND_TYPE_MAP.get(bt, "---")
@@ -99,16 +100,16 @@ def _bond_symbol(bond: Chem.Bond) -> str:
     return base
 
 
-# ── 核心转换类 ─────────────────────────────────────────────────────────────────
+# ── Core converter class ───────────────────────────────────────────────────────
 
 class RepeatUnitConverter:
     """
-    将单个重复单元 SMILES 转换为 Mermaid subgraph 片段。
+    Converts a single repeat-unit SMILES into a Mermaid subgraph fragment.
 
-    返回：
-        - subgraph 文本行列表
-        - entry_node_id：连接左侧的节点 ID
-        - exit_node_id：连接右侧的节点 ID
+    Returns:
+        - list of subgraph text lines
+        - entry_node_id: node ID connecting to the left side
+        - exit_node_id: node ID connecting to the right side
     """
 
     def __init__(self, block: BlockSpec, prefix: str, kekulize: bool = True):
@@ -122,10 +123,10 @@ class RepeatUnitConverter:
         symbol = atom.GetSymbol()
         self._element_counter[symbol] += 1
         cnt = self._element_counter[symbol]
-        # 使用 RDKit 计算的绝对 CIP 构型（_CIPCode），而不是把
-        # CHI_TETRAHEDRAL_CW/CCW 直接当 R/S —— CW/CCW 依赖原子顺序，
-        # 只有 _CIPCode 才是可序列化的绝对 R/S 标签。
-        # AssignStereochemistry 已在 convert() 中调用，确保 _CIPCode 存在。
+        # Use the absolute CIP configuration computed by RDKit (_CIPCode) rather than
+        # treating CHI_TETRAHEDRAL_CW/CCW directly as R/S -- CW/CCW depends on atom
+        # ordering, while only _CIPCode is a serializable absolute R/S label.
+        # AssignStereochemistry is called in convert() to ensure _CIPCode is present.
         suffix = ""
         if atom.HasProp("_CIPCode"):
             cip = atom.GetProp("_CIPCode")
@@ -140,9 +141,9 @@ class RepeatUnitConverter:
         """
         mol = Chem.MolFromSmiles(self.block.smiles)
         if mol is None:
-            raise ValueError(f"无法解析 SMILES: {self.block.smiles!r}")
+            raise ValueError(f"Cannot parse SMILES: {self.block.smiles!r}")
 
-        # Kekulize（显式单/双键）— optional; skip for aromatic <--> notation
+        # Kekulize (explicit single/double bonds) -- optional; skip for aromatic <--> notation
         if self.kekulize:
             try:
                 Chem.Kekulize(mol, clearAromaticFlags=True)
@@ -154,37 +155,37 @@ class RepeatUnitConverter:
         except Exception:
             pass
 
-        # 找到连接点 (* = 原子序数 0)
+        # Find attachment points (* = atomic number 0)
         ap_idxs = [a.GetIdx() for a in mol.GetAtoms() if a.GetAtomicNum() == 0]
         if len(ap_idxs) != 2:
             raise ValueError(
-                f"重复单元 SMILES 必须含恰好 2 个 * 连接点，"
-                f"当前含 {len(ap_idxs)} 个：{self.block.smiles!r}"
+                f"Repeat unit SMILES must contain exactly 2 * attachment points, "
+                f"but found {len(ap_idxs)}: {self.block.smiles!r}"
             )
 
         ap_set = set(ap_idxs)
 
-        # 找到与每个 * 相连的真实原子（entry / exit）
+        # Find the real atom connected to each * (entry / exit)
         def _real_neighbor(ap_idx: int) -> int:
             for nbr in mol.GetAtomWithIdx(ap_idx).GetNeighbors():
                 if nbr.GetAtomicNum() != 0:
                     return nbr.GetIdx()
-            raise ValueError(f"连接点 * (idx={ap_idx}) 没有非 * 邻居原子")
+            raise ValueError(f"Attachment point * (idx={ap_idx}) has no non-* neighbor atom")
 
         entry_real = _real_neighbor(ap_idxs[0])
         exit_real  = _real_neighbor(ap_idxs[1])
 
-        # 为真实原子分配节点 ID
+        # Assign node IDs to real atoms
         for atom in mol.GetAtoms():
             if atom.GetIdx() in ap_set:
                 continue
             self._node_map[atom.GetIdx()] = self._new_node_id(atom)
 
-        # 生成 subgraph 文本
+        # Generate subgraph text
         sg_label = self.block.label or f"×{self.block.n}"
         lines: List[str] = [f'    subgraph {self.prefix}["{sg_label}"]']
 
-        # 原子节点定义
+        # Atom node definitions
         for atom in mol.GetAtoms():
             if atom.GetIdx() in ap_set:
                 continue
@@ -194,7 +195,8 @@ class RepeatUnitConverter:
 
         lines.append("")
 
-        # 键连接（跳过包含 * 的键）
+        # Bond connections (skip bonds involving *)
+
         for bond in mol.GetBonds():
             bi, bj = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
             if bi in ap_set or bj in ap_set:
@@ -210,17 +212,17 @@ class RepeatUnitConverter:
 
 
 class PolymerToMermaidConverter:
-    """将 PolymerSpec 转换为完整 Mermaid Graph。"""
+    """Converts a PolymerSpec into a complete Mermaid Graph."""
 
     def __init__(self, kekulize: bool = True):
         self.kekulize = kekulize
 
     def convert(self, spec: PolymerSpec) -> str:
         lines: List[str] = ["graph LR"]
-        lines.append(f"    %% 高分子: {spec.name}")
+        lines.append(f"    %% Polymer: {spec.name}")
         lines.append("")
 
-        # 1. 转换各嵌段，收集 subgraph 文本和 entry/exit 节点 ID
+        # 1. Convert each block, collecting subgraph text and entry/exit node IDs
         block_data: List[Tuple[List[str], str, str]] = []
         for i, block in enumerate(spec.blocks):
             prefix = f"B{i}"
@@ -228,23 +230,23 @@ class PolymerToMermaidConverter:
             sg_lines, entry_nid, exit_nid = conv.convert()
             block_data.append((sg_lines, entry_nid, exit_nid))
 
-        # 2. 左端基节点
+        # 2. Left end-group node
         tl_nid = "TL"
         tl_label = self._terminus_label(spec.terminus_left, default="H")
         lines.append(f"    {tl_nid}[{tl_label}]")
 
-        # 3. 插入所有 subgraph
+        # 3. Insert all subgraphs
         for sg_lines, _, _ in block_data:
             lines.extend(sg_lines)
             lines.append("")
 
-        # 4. 右端基节点
+        # 4. Right end-group node
         tr_nid = "TR"
         tr_label = self._terminus_label(spec.terminus_right, default="H")
         lines.append(f"    {tr_nid}[{tr_label}]")
         lines.append("")
 
-        # 5. 连接：TL --- entry0, exit0 --- entry1, ..., exitN --- TR
+        # 5. Connections: TL --- entry0, exit0 --- entry1, ..., exitN --- TR
         _, first_entry, _ = block_data[0]
         lines.append(f"    {tl_nid} --- {first_entry}")
 
@@ -260,7 +262,7 @@ class PolymerToMermaidConverter:
 
     @staticmethod
     def _terminus_label(smiles: Optional[str], default: str = "H") -> str:
-        """从端基 SMILES 生成显示标签。"""
+        """Generate a display label from an end-group SMILES."""
         if smiles is None:
             return default
         mol = Chem.MolFromSmiles(smiles)
@@ -272,7 +274,7 @@ class PolymerToMermaidConverter:
         return default
 
 
-# ── 便捷函数 ──────────────────────────────────────────────────────────────────
+# ── Convenience functions ─────────────────────────────────────────────────────
 
 def polymer_to_mermaid(
     repeat_smiles: str,
@@ -284,20 +286,20 @@ def polymer_to_mermaid(
     kekulize: bool = True,
 ) -> str:
     """
-    均聚物转换便捷接口。
+    Convenience interface for converting a homopolymer.
 
     Args:
-        repeat_smiles:  含两个 * 的重复单元 SMILES，如 "*CC*"
-        n:              重复次数
-        label:          subgraph 显示标签（默认 "×n"）
-        terminus_left:  左端基 SMILES（如 "C" 甲基，None 则显示 H）
-        terminus_right: 右端基 SMILES
-        name:           图注释名称
-        kekulize:       True  → Kekulize芳香键为交替单/双键 (default, for counting tasks)
-                        False → 保留芳香键为 <--> (for editing tasks)
+        repeat_smiles:  Repeat unit SMILES with two *, e.g. "*CC*"
+        n:              Repeat count
+        label:          subgraph display label (default "xn")
+        terminus_left:  Left end-group SMILES (e.g. "C" for methyl; None displays H)
+        terminus_right: Right end-group SMILES
+        name:           Graph annotation name
+        kekulize:       True  -> Kekulize aromatic bonds to alternating single/double (default, for counting tasks)
+                        False -> Keep aromatic bonds as <--> (for editing tasks)
 
     Returns:
-        Mermaid 格式字符串
+        Mermaid format string
     """
     spec = PolymerSpec(
         blocks=[BlockSpec(smiles=repeat_smiles, n=n, label=label)],
@@ -315,16 +317,16 @@ def block_copolymer_to_mermaid(
     name: str = "BlockCopolymer",
 ) -> str:
     """
-    嵌段共聚物转换便捷接口。
+    Convenience interface for converting a block copolymer.
 
     Args:
-        blocks:         有序 BlockSpec 列表，按链序排列
-        terminus_left:  左端基 SMILES
-        terminus_right: 右端基 SMILES
-        name:           图注释名称
+        blocks:         Ordered list of BlockSpec, arranged along the chain
+        terminus_left:  Left end-group SMILES
+        terminus_right: Right end-group SMILES
+        name:           Graph annotation name
 
     Returns:
-        Mermaid 格式字符串
+        Mermaid format string
     """
     spec = PolymerSpec(
         blocks=blocks,
@@ -335,86 +337,86 @@ def block_copolymer_to_mermaid(
     return PolymerToMermaidConverter().convert(spec)
 
 
-# ── 演示 / CLI ─────────────────────────────────────────────────────────────────
+# ── Demo / CLI ─────────────────────────────────────────────────────────────────
 
 DEMO_CASES = [
     {
-        "name": "聚乙烯 (PE)",
+        "name": "Polyethylene (PE)",
         "type": "homopolymer",
         "smiles": "*CC*",
         "n": 1000,
         "terminus_left": "C",
         "terminus_right": "C",
-        "description": "最简单线性均聚物；C=100 以内的小分子等价于直链烷烃",
+        "description": "Simplest linear homopolymer; equivalent to a straight-chain alkane for n<=100",
     },
     {
-        "name": "聚丙烯 (PP)",
+        "name": "Polypropylene (PP)",
         "type": "homopolymer",
         "smiles": "*CC(C)*",
         "n": 500,
         "terminus_left": "C",
         "terminus_right": "C",
-        "description": "含甲基侧链的均聚物",
+        "description": "Homopolymer with methyl side chain",
     },
     {
-        "name": "聚乙二醇 (PEG)",
+        "name": "Polyethylene_glycol (PEG)",
         "type": "homopolymer",
         "smiles": "*CCO*",
         "n": 200,
         "terminus_left": "CO",
         "terminus_right": "O",
-        "description": "生物医用高分子，重复单元含氧",
+        "description": "Biomedical polymer; repeat unit contains oxygen",
     },
     {
-        "name": "聚苯乙烯 (PS)",
+        "name": "Polystyrene (PS)",
         "type": "homopolymer",
         "smiles": "*CC(c1ccccc1)*",
         "n": 300,
         "terminus_left": "C",
         "terminus_right": "C",
-        "description": "苯环侧链均聚物（芳香体系）",
+        "description": "Homopolymer with phenyl side chain (aromatic system)",
     },
     {
-        "name": "尼龙-6,6 (Nylon-6,6)",
+        "name": "Nylon-6,6",
         "type": "homopolymer",
         "smiles": "*C(=O)CCCCCC(=O)NCCCCCCN*",
         "n": 100,
         "terminus_left": None,
         "terminus_right": None,
-        "description": "酰胺键高分子，重复单元较复杂",
+        "description": "Amide-bond polymer with a relatively complex repeat unit",
     },
     {
-        "name": "PEG-b-PPO 嵌段共聚物",
+        "name": "PEG-b-PPO block copolymer",
         "type": "block_copolymer",
         "blocks": [
-            BlockSpec("*CCO*",     n=50,  label="PEG ×50"),
-            BlockSpec("*CC(C)O*",  n=30,  label="PPO ×30"),
+            BlockSpec("*CCO*",     n=50,  label="PEG x50"),
+            BlockSpec("*CC(C)O*",  n=30,  label="PPO x30"),
         ],
         "terminus_left": "CO",
         "terminus_right": "O",
-        "description": "两嵌段共聚物，亲水 PEG + 疏水 PPO",
+        "description": "Diblock copolymer: hydrophilic PEG + hydrophobic PPO",
     },
 ]
 
 
 def run_demo():
     print("=" * 70)
-    print("polymer_to_mermaid  —  高分子 → Mermaid Graph 演示")
+    print("polymer_to_mermaid  --  Polymer -> Mermaid Graph demo")
     print("=" * 70)
 
     for case in DEMO_CASES:
         print(f"\n{'─'*60}")
-        print(f"【{case['name']}】")
-        print(f"  描述: {case['description']}")
+        print(f"[{case['name']}]")
+        print(f"  Description: {case['description']}")
 
         if case["type"] == "homopolymer":
             mol = Chem.MolFromSmiles(case["smiles"].replace("*", "[*]"))
             formula_note = ""
             if mol:
-                # 对于均聚物，统计单元内的原子数
+                # For homopolymers, count the heavy atoms in the repeat unit
                 ap_cnt = sum(1 for a in mol.GetAtoms() if a.GetAtomicNum() == 0)
                 heavy_cnt = mol.GetNumAtoms() - ap_cnt
-                formula_note = f"  单元重原子数: {heavy_cnt}  |  链总原子 ≈ {heavy_cnt * case['n']}"
+                formula_note = f"  Heavy atoms per unit: {heavy_cnt}  |  Total chain atoms ~= {heavy_cnt * case['n']}"
 
             print(f"  SMILES (repeat): {case['smiles']}  n={case['n']}")
             if formula_note:
@@ -434,8 +436,8 @@ def run_demo():
                 mol = Chem.MolFromSmiles(b.smiles.replace("*", "[*]"))
                 if mol:
                     total_atoms += (mol.GetNumAtoms() - 2) * b.n  # subtract 2 attachment points
-            print(f"  嵌段: " + " | ".join(f"{b.label or b.smiles} n={b.n}" for b in blocks))
-            print(f"  链总原子 ≈ {total_atoms}")
+            print(f"  Blocks: " + " | ".join(f"{b.label or b.smiles} n={b.n}" for b in blocks))
+            print(f"  Total chain atoms ~= {total_atoms}")
 
             graph = block_copolymer_to_mermaid(
                 blocks,
@@ -447,17 +449,17 @@ def run_demo():
         print(f"\n```mermaid\n{graph}\n```")
 
     print("\n" + "=" * 70)
-    print("演示完成。使用 polymer_to_mermaid() 或 block_copolymer_to_mermaid() 集成到评测流程。")
+    print("Demo complete. Use polymer_to_mermaid() or block_copolymer_to_mermaid() to integrate into the evaluation pipeline.")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="高分子 repeat unit → Mermaid Graph")
-    parser.add_argument("--smiles",  type=str, help="重复单元 SMILES（含两个 *），如 '*CC*'")
-    parser.add_argument("--n",       type=int, help="重复次数")
-    parser.add_argument("--label",   type=str, default=None, help="subgraph 显示标签")
-    parser.add_argument("--tl",      type=str, default=None, help="左端基 SMILES")
-    parser.add_argument("--tr",      type=str, default=None, help="右端基 SMILES")
-    parser.add_argument("--demo",    action="store_true", help="运行内置演示（默认行为）")
+    parser = argparse.ArgumentParser(description="Polymer repeat unit -> Mermaid Graph")
+    parser.add_argument("--smiles",  type=str, help="Repeat unit SMILES (with two *), e.g. '*CC*'")
+    parser.add_argument("--n",       type=int, help="Repeat count")
+    parser.add_argument("--label",   type=str, default=None, help="subgraph display label")
+    parser.add_argument("--tl",      type=str, default=None, help="Left end-group SMILES")
+    parser.add_argument("--tr",      type=str, default=None, help="Right end-group SMILES")
+    parser.add_argument("--demo",    action="store_true", help="Run the built-in demo (default behavior)")
     args = parser.parse_args()
 
     if args.smiles and args.n:

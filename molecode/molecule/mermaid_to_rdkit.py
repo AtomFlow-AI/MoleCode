@@ -1,17 +1,17 @@
 """
-将Mermaid Graph格式转换为RDKit Mol对象
+Convert Mermaid Graph format to RDKit Mol objects
 
-RDKit分子表示方式：
-1. Mol对象 - 分子的主要容器
-2. Atom对象 - 包含原子序号、元素符号、氢数、形式电荷等
-3. Bond对象 - 包含起始/终止原子索引、键类型（SINGLE, DOUBLE, TRIPLE等）
-4. 邻接表结构 - 通过原子索引连接
+RDKit molecule representation:
+1. Mol object - primary container for molecules
+2. Atom object - contains atomic number, element symbol, hydrogen count, formal charge, etc.
+3. Bond object - contains begin/end atom indices, bond type (SINGLE, DOUBLE, TRIPLE, etc.)
+4. Adjacency list structure - connected via atom indices
 
-示例：
-    乙醇 (CH3CH2OH)
-    - 3个原子: C(idx=0), C(idx=1), O(idx=2)
-    - 2个键: C-C (0-1, SINGLE), C-O (1-2, SINGLE)
-    - 隐式H会自动计算
+Example:
+    Ethanol (CH3CH2OH)
+    - 3 atoms: C(idx=0), C(idx=1), O(idx=2)
+    - 2 bonds: C-C (0-1, SINGLE), C-O (1-2, SINGLE)
+    - Implicit H is calculated automatically
 """
 
 import re
@@ -21,31 +21,31 @@ from rdkit.Chem import AllChem, Draw
 
 
 class MermaidMolParser:
-    """解析Mermaid分子图并转换为RDKit Mol对象"""
+    """Parse a Mermaid molecule graph and convert it to an RDKit Mol object."""
 
-    # 键类型映射
+    # Bond type mapping
     BOND_TYPE_MAP = {
         '---': Chem.BondType.SINGLE,
         '===': Chem.BondType.DOUBLE,
         '-.-': Chem.BondType.TRIPLE,
         '<-->': Chem.BondType.AROMATIC,
-        '-->': Chem.BondType.DATIVE,  # 配位键
+        '-->': Chem.BondType.DATIVE,  # Coordinate bond
     }
 
     def __init__(self):
-        self.atoms: Dict[str, int] = {}  # atom_id -> atom_label映射
-        self.bonds: List[Tuple] = []  # (atom1_id, atom2_id, bond_type) 或 (atom1_id, atom2_id, bond_type, stereo)
-        self.chirality: Dict[str, str] = {}  # atom_id -> chirality ('R' or 'S') 映射
+        self.atoms: Dict[str, int] = {}  # atom_id -> atom_label mapping
+        self.bonds: List[Tuple] = []  # (atom1_id, atom2_id, bond_type) or (atom1_id, atom2_id, bond_type, stereo)
+        self.chirality: Dict[str, str] = {}  # atom_id -> chirality ('R' or 'S') mapping
 
     def parse_mermaid_graph(self, mermaid_text: str) -> Optional[Chem.Mol]:
         """
-        解析Mermaid图文本并生成RDKit Mol对象
+        Parse Mermaid graph text and produce an RDKit Mol object.
 
         Args:
-            mermaid_text: Mermaid格式的分子图文本
+            mermaid_text: Molecule graph text in Mermaid format
 
         Returns:
-            RDKit Mol对象，解析失败返回None
+            RDKit Mol object, or None if parsing fails
         """
         self.atoms = {}
         self.bonds = []
@@ -56,7 +56,7 @@ class MermaidMolParser:
         for line in lines:
             line = line.strip()
 
-            # 跳过注释、空行、graph声明、subgraph声明
+            # Skip comments, blank lines, graph declarations, subgraph declarations
             if (line.startswith('%%') or
                 line.startswith('graph ') or
                 line.startswith('subgraph ') or
@@ -64,29 +64,29 @@ class MermaidMolParser:
                 not line):
                 continue
 
-            # 解析原子定义和键连接
+            # Parse atom definitions and bond connections
             self._parse_line(line)
 
-        # 构建RDKit Mol对象
+        # Build the RDKit Mol object
         return self._build_mol()
 
     def _parse_line(self, line: str):
-        """解析单行，提取原子和键信息"""
+        """Parse a single line to extract atom and bond information."""
 
-        # 先尝试匹配带立体化学标签的双键: atom1 ===|E| atom2 或 atom1 ===|Z| atom2
-        # 原子ID可能包含手性后缀 (_R 或 _S)
+        # First try to match a stereo-labeled double bond: atom1 ===|E| atom2 or atom1 ===|Z| atom2
+        # Atom IDs may include a chirality suffix (_R or _S)
         stereo_bond_pattern = r'([\w_]+)\s*===\|([EZez]|cis|trans|CIS|TRANS)\|\s*([\w_]+)'
         stereo_match = re.search(stereo_bond_pattern, line)
 
         if stereo_match:
             atom1_id = stereo_match.group(1)
-            stereo_type = stereo_match.group(2).upper()  # 转大写统一处理
+            stereo_type = stereo_match.group(2).upper()  # Normalize to uppercase
             atom2_id = stereo_match.group(3)
             self.bonds.append((atom1_id, atom2_id, '===', stereo_type))
             return
 
-        # 尝试匹配普通键连接: atom1 bond_type atom2
-        # 原子ID可能包含手性后缀 (_R 或 _S)
+        # Try to match a plain bond connection: atom1 bond_type atom2
+        # Atom IDs may include a chirality suffix (_R or _S)
         bond_pattern = r'([\w_]+)\s*(<-->|---|\===|-\.-|-->)\s*([\w_]+)'
         bond_match = re.search(bond_pattern, line)
 
@@ -97,16 +97,16 @@ class MermaidMolParser:
             self.bonds.append((atom1_id, atom2_id, bond_type))
             return
 
-        # 尝试匹配原子定义: AtomID[Label] 或 AtomID_R[Label] 或 AtomID_S[Label]
+        # Try to match an atom definition: AtomID[Label] or AtomID_R[Label] or AtomID_S[Label]
         atom_pattern = r'([\w_]+?)(?:_(R|S))?\[([^\]]+)\]'
         atom_match = re.search(atom_pattern, line)
 
         if atom_match:
             base_id = atom_match.group(1)
-            chirality = atom_match.group(2)  # 'R', 'S', 或 None
+            chirality = atom_match.group(2)  # 'R', 'S', or None
             label = atom_match.group(3)
 
-            # 构建完整的原子ID（包含手性后缀）
+            # Build the full atom ID (including chirality suffix)
             if chirality:
                 atom_id = f"{base_id}_{chirality}"
                 self.chirality[atom_id] = chirality
@@ -118,19 +118,19 @@ class MermaidMolParser:
 
     def _parse_atom_label(self, label: str) -> Tuple[str, int, int]:
         """
-        解析原子标签，提取元素符号、显式氢数和电荷
+        Parse an atom label to extract element symbol, explicit hydrogen count, and charge.
 
         Args:
-            label: 原子标签，如 'C', 'OH', 'NH2', 'N(+)', 'O(-)', 'O(2-)'
+            label: Atom label, e.g. 'C', 'OH', 'NH2', 'N(+)', 'O(-)', 'O(2-)'
 
         Returns:
-            (元素符号, 显式氢数, 形式电荷)
-            无效标签返回 ('*', 0, 0) - 使用Dummy Atom标记
+            (element symbol, explicit hydrogen count, formal charge)
+            Returns ('*', 0, 0) for invalid labels - uses Dummy Atom marker
         """
         label = label.strip()
 
-        # 匹配元素符号、氢数和电荷（新格式：括号包裹，数字在前，符号在后）
-        # 例如: C, OH, NH2, N(+), NH2(+), O(-), O(2-)
+        # Match element symbol, hydrogen count, and charge (new format: wrapped in parentheses, number first, sign last)
+        # Examples: C, OH, NH2, N(+), NH2(+), O(-), O(2-)
         match = re.match(r'^([A-Z][a-z]?)(?:H(\d*))?(?:\((\d*[+-])\))?$', label)
 
         if match:
@@ -138,95 +138,95 @@ class MermaidMolParser:
             h_count_str = match.group(2)
             charge_str = match.group(3)
 
-            # 验证是否为合法元素符号
+            # Validate element symbol
             try:
-                # 尝试创建原子以验证元素符号合法性
+                # Attempt to create an atom to verify the element symbol is valid
                 test_atom = Chem.Atom(element)
                 atomic_num = test_atom.GetAtomicNum()
 
-                # 检查是否为真实元素（原子序数>0）
+                # Check for a real element (atomic number > 0)
                 if atomic_num == 0 and element != '*':
-                    # 不是合法元素，返回Dummy Atom
+                    # Not a valid element; return Dummy Atom
                     return '*', 0, 0
 
             except Exception:
-                # 创建失败，返回Dummy Atom
+                # Creation failed; return Dummy Atom
                 return '*', 0, 0
 
-            # 解析氢数
+            # Parse hydrogen count
             if h_count_str is None:
-                # 没有H标记
+                # No H marker
                 h_count = 0
             elif h_count_str == '':
-                # 有H但没有数字，表示1个H
+                # H present but no digit means 1 H
                 h_count = 1
             else:
-                # 明确指定H的数量
+                # Explicit hydrogen count
                 h_count = int(h_count_str)
 
-            # 解析电荷（新格式：数字在前，符号在后）
+            # Parse charge (new format: number first, sign last)
             charge = 0
             if charge_str:
-                # charge_str 格式: "+", "-", "2+", "2-", "3+" 等
+                # charge_str format: "+", "-", "2+", "2-", "3+", etc.
                 if charge_str == '+':
                     charge = 1
                 elif charge_str == '-':
                     charge = -1
                 else:
-                    # 提取数字和符号
-                    sign = charge_str[-1]  # 最后一个字符是符号
-                    number = charge_str[:-1]  # 前面的是数字
+                    # Extract number and sign
+                    sign = charge_str[-1]  # Last character is the sign
+                    number = charge_str[:-1]  # Leading characters are the number
                     magnitude = int(number)
                     charge = magnitude if sign == '+' else -magnitude
 
             return element, h_count, charge
 
-        # 如果无法解析，返回Dummy Atom标记
-        # Dummy Atom: 原子序数为0，符号为'*'，不会与真实元素混淆
+        # If parsing fails, return Dummy Atom marker
+        # Dummy Atom: atomic number 0, symbol '*', will not be confused with real elements
         return '*', 0, 0
 
     def _build_mol(self) -> Optional[Chem.Mol]:
-        """根据解析的原子和键信息构建RDKit Mol对象"""
+        """Build an RDKit Mol object from the parsed atom and bond information."""
 
         if not self.atoms:
             return None
 
-        # 创建可编辑的分子
+        # Create an editable molecule
         mol = Chem.RWMol()
 
-        # 原子ID到索引的映射
+        # Mapping from atom ID to index
         atom_id_to_idx = {}
 
-        # 添加原子
+        # Add atoms
         for atom_id, label in self.atoms.items():
             element, h_count, charge = self._parse_atom_label(label)
 
-            # 创建原子
+            # Create atom
             atom = Chem.Atom(element)
 
-            # 设置显式氢数（如果有）
+            # Set explicit hydrogen count (if any)
             if h_count > 0:
                 atom.SetNumExplicitHs(h_count)
 
-            # 设置形式电荷（如果有）
+            # Set formal charge (if any)
             if charge != 0:
                 atom.SetFormalCharge(charge)
 
-            # 添加到分子中
+            # Add to molecule
             idx = mol.AddAtom(atom)
             atom_id_to_idx[atom_id] = idx
 
-        # 添加键。双键 E/Z 和四面体 R/S 都需要在完整拓扑存在后设置，
-        # 因此这里先记录，待 SanitizeMol 后统一恢复。
+        # Add bonds. Double bond E/Z and tetrahedral R/S must be set after the full
+        # topology is present, so record them here and restore after SanitizeMol.
         stereo_bonds = []
         aromatic_atom_idxs = set()
         for bond_info in self.bonds:
             if len(bond_info) == 3:
-                # 普通键: (atom1_id, atom2_id, bond_type_str)
+                # Plain bond: (atom1_id, atom2_id, bond_type_str)
                 atom1_id, atom2_id, bond_type_str = bond_info
                 stereo_type = None
             elif len(bond_info) == 4:
-                # 带立体化学的键: (atom1_id, atom2_id, bond_type_str, stereo_type)
+                # Stereo bond: (atom1_id, atom2_id, bond_type_str, stereo_type)
                 atom1_id, atom2_id, bond_type_str, stereo_type = bond_info
             else:
                 continue
@@ -249,21 +249,21 @@ class MermaidMolParser:
         for idx in aromatic_atom_idxs:
             mol.GetAtomWithIdx(idx).SetIsAromatic(True)
 
-        # 转换为不可编辑的Mol对象
+        # Convert to an immutable Mol object
         mol = mol.GetMol()
 
-        # 清理分子结构（包括芳香性感知）
+        # Sanitize molecule structure (includes aromaticity perception)
         try:
             Chem.SanitizeMol(mol)
-            # SanitizeMol会自动进行芳香性感知
-            # 但我们也可以显式设置以确保正确处理
+            # SanitizeMol performs aromaticity perception automatically;
+            # set it explicitly here as well to ensure correct handling
             Chem.SetAromaticity(mol)
         except Exception:
-            # 如果清理失败，尝试不带芳香性的清理
+            # If sanitization fails, try without aromaticity
             try:
                 Chem.SanitizeMol(mol, sanitizeOps=Chem.SanitizeFlags.SANITIZE_ALL^Chem.SanitizeFlags.SANITIZE_SETAROMATICITY)
             except Exception:
-                # 完全失败，返回未清理的版本
+                # Complete failure; return the unsanitized version
                 pass
 
         self._assign_chirality_from_ids(mol, atom_id_to_idx)
@@ -273,7 +273,7 @@ class MermaidMolParser:
 
 
     def _assign_chirality_from_ids(self, mol: Chem.Mol, atom_id_to_idx: Dict[str, int]):
-        """根据 atom id 的 _R/_S 后缀恢复绝对 CIP 手性。"""
+        """Restore absolute CIP chirality from the _R/_S suffix of atom IDs."""
         if not self.chirality:
             return
 
@@ -308,13 +308,13 @@ class MermaidMolParser:
             pass
 
     def _assign_double_bond_stereo(self, mol: Chem.Mol, stereo_bonds: List[Tuple[int, int, str]]):
-        """恢复 ===|E| / ===|Z| 双键构型。"""
+        """Restore ===|E| / ===|Z| double bond geometry."""
         for idx1, idx2, stereo_type in stereo_bonds:
             bond = mol.GetBondBetweenAtoms(idx1, idx2)
             if bond is None:
                 continue
 
-            # 获取双键两端原子的邻接原子（用于定义立体化学）
+            # Get the neighboring atoms on each end of the double bond (used to define stereochemistry)
             atom1 = mol.GetAtomWithIdx(idx1)
             atom2 = mol.GetAtomWithIdx(idx2)
 
@@ -336,7 +336,8 @@ class MermaidMolParser:
                 bond.SetStereo(Chem.BondStereo.STEREOTRANS)
 
         try:
-            # 不使用 cleanIt=True，避免清掉刚刚从 EGL 明确恢复的 E/Z 标记。
+            # Do not use cleanIt=True to avoid clearing the E/Z labels
+            # explicitly restored from the EGL.
             Chem.AssignStereochemistry(mol, cleanIt=False, force=True)
         except Exception:
             pass
@@ -344,33 +345,33 @@ class MermaidMolParser:
 
 def has_invalid_atoms(mol: Chem.Mol) -> bool:
     """
-    检查分子是否包含无效原子（Dummy Atom）
+    Check whether a molecule contains invalid atoms (Dummy Atoms).
 
     Args:
-        mol: RDKit Mol对象
+        mol: RDKit Mol object
 
     Returns:
-        True表示包含无效原子
+        True if the molecule contains invalid atoms
     """
     if mol is None:
         return False
 
     for atom in mol.GetAtoms():
-        if atom.GetAtomicNum() == 0:  # 原子序数0表示Dummy Atom
+        if atom.GetAtomicNum() == 0:  # Atomic number 0 indicates a Dummy Atom
             return True
     return False
 
 
 def get_invalid_atom_labels(mermaid_text: str, mol: Chem.Mol) -> List[str]:
     """
-    获取所有无效原子的原始标签
+    Get the original labels of all invalid atoms.
 
     Args:
-        mermaid_text: 原始Mermaid文本
-        mol: 解析后的Mol对象
+        mermaid_text: Original Mermaid text
+        mol: Parsed Mol object
 
     Returns:
-        无效原子的标签列表
+        List of labels for invalid atoms
     """
     if mol is None:
         return []
@@ -378,7 +379,7 @@ def get_invalid_atom_labels(mermaid_text: str, mol: Chem.Mol) -> List[str]:
     invalid_labels = []
     parser = MermaidMolParser()
 
-    # 重新解析以获取原始标签
+    # Re-parse to retrieve original labels
     lines = mermaid_text.strip().split('\n')
     for line in lines:
         line = line.strip()
@@ -396,15 +397,15 @@ def get_invalid_atom_labels(mermaid_text: str, mol: Chem.Mol) -> List[str]:
 
 def mermaid_to_mol(mermaid_text: str, strict: bool = True) -> Optional[Chem.Mol]:
     """
-    将Mermaid图格式转换为RDKit Mol对象（便捷函数）
+    Convert Mermaid graph format to an RDKit Mol object (convenience function).
 
     Args:
-        mermaid_text: Mermaid格式的分子图文本
-        strict: 严格模式。如果为True，遇到无效原子时返回None；
-                如果为False，使用Dummy Atom (*)标记无效原子并继续
+        mermaid_text: Molecule graph text in Mermaid format
+        strict: Strict mode. If True, returns None when invalid atoms are found;
+                if False, marks invalid atoms with Dummy Atom (*) and continues.
 
     Returns:
-        RDKit Mol对象，解析失败返回None
+        RDKit Mol object, or None if parsing fails
 
     Example:
         >>> mermaid_graph = '''
@@ -428,26 +429,26 @@ def mermaid_to_mol(mermaid_text: str, strict: bool = True) -> Optional[Chem.Mol]
     if mol is None:
         return None
 
-    # 检查是否包含无效原子
+    # Check for invalid atoms
     if strict and has_invalid_atoms(mol):
         invalid_labels = get_invalid_atom_labels(mermaid_text, mol)
-        print(f"警告: 检测到无效原子标签: {invalid_labels}")
-        print(f"这些原子已被标记为Dummy Atom (符号='*', 原子序数=0)")
-        print(f"提示: 使用 strict=False 参数可以允许Dummy Atom")
+        print(f"Warning: invalid atom labels detected: {invalid_labels}")
+        print(f"These atoms have been marked as Dummy Atoms (symbol='*', atomic number=0).")
+        print(f"Tip: pass strict=False to allow Dummy Atoms.")
         return None
 
     return mol
 
 
 def mol_to_smiles(mol: Chem.Mol) -> str:
-    """将RDKit Mol转换为SMILES字符串"""
+    """Convert an RDKit Mol to a SMILES string."""
     if mol is None:
         return ""
     return Chem.MolToSmiles(mol)
 
 
 def mol_to_inchi(mol: Chem.Mol) -> str:
-    """将RDKit Mol转换为InChI字符串"""
+    """Convert an RDKit Mol to an InChI string."""
     if mol is None:
         return ""
     return Chem.MolToInchi(mol)
@@ -455,22 +456,22 @@ def mol_to_inchi(mol: Chem.Mol) -> str:
 
 def visualize_mol(mol: Chem.Mol, title: str = "", save_path: str = None):
     """
-    可视化单个分子结构
+    Visualize a single molecule structure.
 
     Args:
-        mol: RDKit Mol对象
-        title: 图像标题
-        save_path: 保存路径，如果为None则不保存
+        mol: RDKit Mol object
+        title: Image title
+        save_path: Save path; if None the image is not saved
     """
     if mol is None:
-        print(f"无法可视化 {title}: Mol对象为None")
+        print(f"Cannot visualize {title}: Mol object is None")
         return
 
     img = Draw.MolToImage(mol, size=(300, 300))
 
     if save_path:
         img.save(save_path)
-        print(f"已保存到: {save_path}")
+        print(f"Saved to: {save_path}")
 
     return img
 
@@ -481,28 +482,28 @@ def visualize_mols_grid(mols: List[Chem.Mol],
                         sub_img_size: Tuple[int, int] = (300, 300),
                         save_path: str = None):
     """
-    以网格形式可视化多个分子
+    Visualize multiple molecules in a grid layout.
 
     Args:
-        mols: RDKit Mol对象列表
-        legends: 每个分子的标签列表
-        mols_per_row: 每行显示的分子数
-        sub_img_size: 每个分子图像的大小
-        save_path: 保存路径，如果为None则不保存
+        mols: List of RDKit Mol objects
+        legends: List of labels for each molecule
+        mols_per_row: Number of molecules per row
+        sub_img_size: Size of each molecule image
+        save_path: Save path; if None the image is not saved
 
     Returns:
-        PIL Image对象
+        PIL Image object
     """
     if not mols:
-        print("没有分子可以可视化")
+        print("No molecules to visualize.")
         return None
 
-    # 过滤掉None值
+    # Filter out None values
     valid_data = [(mol, legends[i] if legends else f"Mol {i+1}")
                   for i, mol in enumerate(mols) if mol is not None]
 
     if not valid_data:
-        print("所有分子都是None")
+        print("All molecules are None.")
         return None
 
     valid_mols, valid_legends = zip(*valid_data)
@@ -516,22 +517,22 @@ def visualize_mols_grid(mols: List[Chem.Mol],
 
     if save_path:
         img.save(save_path)
-        print(f"网格图已保存到: {save_path}")
+        print(f"Grid image saved to: {save_path}")
 
     return img
 
 
 if __name__ == "__main__":
-    # 测试示例
+    # Test examples
     print("=" * 60)
-    print("Mermaid分子图 -> RDKit Mol 转换测试")
+    print("Mermaid molecule graph -> RDKit Mol conversion test")
     print("=" * 60)
 
-    # 定义测试分子
+    # Define test molecules
     test_molecules = [
         ("mol1", """
         graph TB
-            %% 原始分子名称: Mol1
+            %% Original molecule name: Mol1
             subgraph Mol1["Mol1"]
                 Mol1_O_1[O]
                 Mol1_C_1[C]
@@ -565,7 +566,7 @@ if __name__ == "__main__":
                 Mol1_C_23[C]
                 Mol1_O_8[OH]
                 Mol1_C_24[C]
-        
+
                 Mol1_O_1 === Mol1_C_1
                 Mol1_C_1 --- Mol1_C_2
                 Mol1_C_2 --- Mol1_O_2
@@ -607,7 +608,7 @@ if __name__ == "__main__":
 
         ("mol2", """
         graph TB
-            %% 原始分子名称: Mol1 (通过醚键添加呋喃环)
+            %% Original molecule name: Mol1 (furan ring added via ether bond)
             subgraph Mol1["Mol1"]
                 Mol1_O_1[O]
                 Mol1_C_1[C]
@@ -641,7 +642,7 @@ if __name__ == "__main__":
                 Mol1_C_23[C]
                 Mol1_O_8[OH]
                 Mol1_C_24[C]
-        
+
                 Mol1_O_1 === Mol1_C_1
                 Mol1_C_1 --- Mol1_C_2
                 Mol1_C_2 --- Mol1_O_2
@@ -679,27 +680,27 @@ if __name__ == "__main__":
                 Mol1_C_14 --- Mol1_C_8
                 Mol1_C_24 --- Mol1_C_19
             end
-        
-            %% 新增呋喃环子结构
-            subgraph 呋喃环["呋喃环"]
-                呋喃环_C_1[CH]
-                呋喃环_C_2[C]
-                呋喃环_C_3[CH]
-                呋喃环_C_4[CH]
-                呋喃环_O_1[O]
-        
-                呋喃环_C_1 === 呋喃环_C_2
-                呋喃环_C_2 --- 呋喃环_C_3
-                呋喃环_C_3 === 呋喃环_C_4
-                呋喃环_C_4 --- 呋喃环_O_1
-                呋喃环_O_1 --- 呋喃环_C_1
+
+            %% New furan ring substructure
+            subgraph furan_ring["furan_ring"]
+                furan_ring_C_1[CH]
+                furan_ring_C_2[C]
+                furan_ring_C_3[CH]
+                furan_ring_C_4[CH]
+                furan_ring_O_1[O]
+
+                furan_ring_C_1 === furan_ring_C_2
+                furan_ring_C_2 --- furan_ring_C_3
+                furan_ring_C_3 === furan_ring_C_4
+                furan_ring_C_4 --- furan_ring_O_1
+                furan_ring_O_1 --- furan_ring_C_1
             end
-        
-            %% 通过醚键连接
-            Mol1_O_2 --- 呋喃环_C_2
+
+            %% Connected via ether bond
+            Mol1_O_2 --- furan_ring_C_2
                 """),
 
-        ("丙酮", """
+        ("acetone", """
         graph TB
             subgraph Acetone["Acetone"]
                 Acetone_C_1[C]
@@ -713,7 +714,7 @@ if __name__ == "__main__":
             end
         """),
 
-        ("乙炔", """
+        ("acetylene", """
         graph TB
             subgraph Acetylene["Acetylene"]
                 Acetylene_C_1[C]
@@ -723,7 +724,7 @@ if __name__ == "__main__":
             end
         """),
 
-        ("(E)-2-丁烯", """
+        ("(E)-2-butene", """
         graph TB
             subgraph EButene["(E)-2-Butene"]
                 EB_C1[C]
@@ -737,7 +738,7 @@ if __name__ == "__main__":
             end
         """),
 
-        ("(Z)-2-丁烯", """
+        ("(Z)-2-butene", """
         graph TB
             subgraph ZButene["(Z)-2-Butene"]
                 ZB_C1[C]
@@ -752,12 +753,12 @@ if __name__ == "__main__":
         """),
     ]
 
-    # 解析所有分子
+    # Parse all molecules
     mols = []
     legends = []
 
     for i, (name, graph) in enumerate(test_molecules, 1):
-        print(f"\n=== 测试{i}: {name} ===")
+        print(f"\n=== Test {i}: {name} ===")
         mol = mermaid_to_mol(graph)
 
         if mol:
@@ -765,18 +766,18 @@ if __name__ == "__main__":
             formula = Chem.rdMolDescriptors.CalcMolFormula(mol)
 
             print(f"SMILES:  {smiles}")
-            print(f"分子式:  {formula}")
+            print(f"Formula: {formula}")
 
             mols.append(mol)
             legends.append(f"{name}\n{smiles}")
         else:
-            print(f"解析失败！")
+            print(f"Parsing failed!")
             mols.append(None)
-            legends.append(f"{name}\n(解析失败)")
+            legends.append(f"{name}\n(parsing failed)")
 
-    # 生成网格图
+    # Generate grid image
     print("\n" + "=" * 60)
-    print("生成分子结构可视化...")
+    print("Generating molecule structure visualization...")
     print("=" * 60)
 
     visualize_mols_grid(
@@ -787,4 +788,4 @@ if __name__ == "__main__":
         save_path="test_molecules.png"
     )
 
-    print("\n所有测试完成！")
+    print("\nAll tests complete!")

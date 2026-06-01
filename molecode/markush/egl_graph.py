@@ -1,10 +1,10 @@
 """
-EGL Graph — 纯文本级别的 EGL 图解析和图同构比较（不依赖 RDKit）
+EGL Graph -- Pure text-level EGL graph parsing and graph-isomorphism comparison (no RDKit dependency)
 
-核心功能：
-1. 从 EGL mermaid 文本解析出节点+边的图结构
-2. 基于 networkx 的图同构比较（支持节点/边属性匹配）
-3. 缩写展开后的归一化比较
+Core features:
+1. Parse node + edge graph structure from EGL mermaid text
+2. Graph-isomorphism comparison based on networkx (supports node/edge attribute matching)
+3. Normalized comparison after abbreviation expansion
 """
 
 import re
@@ -16,24 +16,24 @@ import networkx as nx
 
 @dataclass
 class NodeInfo:
-    """EGL 图中的节点信息"""
-    node_id: str          # 原始 ID (如 Mol_C_1)
-    label: str            # 显示标签 (如 CH3, Boc, R1)
-    label_type: str       # "atom" (方括号[]) 或 "abbrev" (花括号{})
-    chirality: str = ""   # R, S, 或空
+    """Node information in an EGL graph."""
+    node_id: str          # Raw ID (e.g. Mol_C_1)
+    label: str            # Display label (e.g. CH3, Boc, R1)
+    label_type: str       # "atom" (square brackets []) or "abbrev" (curly braces {})
+    chirality: str = ""   # R, S, or empty
 
 
 @dataclass
 class EdgeInfo:
-    """EGL 图中的边信息"""
-    src: str              # 源节点 ID
-    dst: str              # 目标节点 ID
+    """Edge information in an EGL graph."""
+    src: str              # Source node ID
+    dst: str              # Destination node ID
     bond_type: str        # ---, ===, -.- , -->
-    stereo: str = ""      # E, Z, CIS, TRANS, 或空
+    stereo: str = ""      # E, Z, CIS, TRANS, or empty
 
 
 class EGLGraph:
-    """从 EGL mermaid 文本解析出的图结构"""
+    """Graph structure parsed from EGL mermaid text."""
 
     def __init__(self):
         self.nodes: Dict[str, NodeInfo] = {}
@@ -41,7 +41,7 @@ class EGLGraph:
 
     @classmethod
     def from_egl_text(cls, egl_text: str) -> 'EGLGraph':
-        """从 EGL mermaid 文本解析图结构"""
+        """Parse graph structure from EGL mermaid text."""
         graph = cls()
         if not egl_text:
             return graph
@@ -49,7 +49,7 @@ class EGLGraph:
         for line in egl_text.strip().split('\n'):
             line = line.strip()
 
-            # 跳过注释、空行、graph/subgraph/end
+            # Skip comments, blank lines, graph/subgraph/end
             if (not line or
                 line.startswith('%%') or
                 line.startswith('graph ') or
@@ -62,9 +62,9 @@ class EGLGraph:
         return graph
 
     def _parse_line(self, line: str):
-        """解析单行 EGL"""
+        """Parse a single EGL line."""
 
-        # 带立体化学的双键: atom1 ===|E| atom2
+        # Double bond with stereochemistry: atom1 ===|E| atom2
         m = re.search(r'([\w_]+)\s*===\|([EZez]|cis|trans|CIS|TRANS)\|\s*([\w_]+)', line)
         if m:
             self.edges.append(EdgeInfo(
@@ -73,7 +73,7 @@ class EGLGraph:
             ))
             return
 
-        # 普通键: atom1 bond_type atom2
+        # Regular bond: atom1 bond_type atom2
         m = re.search(r'([\w_]+)\s*(---|\===|-\.-|-->)\s*([\w_]+)', line)
         if m:
             self.edges.append(EdgeInfo(
@@ -82,7 +82,7 @@ class EGLGraph:
             ))
             return
 
-        # 缩写定义 (花括号) — 必须在方括号之前匹配，因为 {R[5]} 内含 []
+        # Abbreviation definition (curly braces) -- must be matched before square brackets because {R[5]} contains []
         m = re.search(r'([\w_]+?)(?:_(R|S))?\{([^}]+)\}', line)
         if m:
             base_id = m.group(1)
@@ -96,7 +96,7 @@ class EGLGraph:
                 )
             return
 
-        # 原子定义 (方括号): AtomID[Label] 或 AtomID_R[Label]
+        # Atom definition (square brackets): AtomID[Label] or AtomID_R[Label]
         m = re.search(r'([\w_]+?)(?:_(R|S))?\[([^\]]+)\]', line)
         if m:
             base_id = m.group(1)
@@ -112,7 +112,7 @@ class EGLGraph:
             return
 
     def to_networkx(self) -> nx.Graph:
-        """转换为 networkx 图"""
+        """Convert to a networkx graph."""
         G = nx.Graph()
         for nid, info in self.nodes.items():
             G.add_node(nid, label=info.label, label_type=info.label_type,
@@ -132,12 +132,12 @@ class EGLGraph:
         return len(self.edges)
 
     def get_abbrev_labels(self) -> List[str]:
-        """返回所有缩写节点的标签列表"""
+        """Return a list of labels for all abbreviation nodes."""
         return [n.label for n in self.nodes.values() if n.label_type == "abbrev"]
 
 
 def normalize_abbrev_name(name: str) -> str:
-    """归一化缩写名称：R1 = R[1] = R¹, CH[2]?n = (CH2)n 等"""
+    """Normalize abbreviation names: R1 = R[1] = R1 (superscript), CH[2]?n = (CH2)n, etc."""
     name = name.strip()
     # R^1 -> R1, R^a -> Ra, R^f -> Rf (caret removal)
     name = name.replace('^', '')
@@ -191,10 +191,11 @@ def normalize_abbrev_name(name: str) -> str:
 
 
 def _detect_aromatic_ring_edges(G: nx.Graph) -> set:
-    """检测芳香环上的边。
+    """Detect edges on aromatic rings.
 
-    判定标准：环上所有边严格交替 === 和 ---，且环大小为 5/6/7。
-    返回被标记为芳香环边的 frozenset(src, dst) 集合。
+    Criterion: all edges around the ring strictly alternate === and ---,
+    and the ring size is 5, 6, or 7.
+    Returns the set of frozenset(src, dst) pairs marked as aromatic ring edges.
     """
     aromatic_edges = set()
 
@@ -235,7 +236,7 @@ def _detect_aromatic_ring_edges(G: nx.Graph) -> set:
 
 
 def _mark_aromatic_edges(G: nx.Graph) -> nx.Graph:
-    """在图上标记芳香环边，设置 is_aromatic=True 属性。"""
+    """Mark aromatic ring edges on the graph by setting the is_aromatic=True attribute."""
     G = G.copy()
     aromatic = _detect_aromatic_ring_edges(G)
     for u, v, data in G.edges(data=True):
@@ -250,20 +251,20 @@ def egl_isomorphic(g1: EGLGraph, g2: EGLGraph,
                    ignore_stereo: bool = True,
                    normalize_abbrevs: bool = True,
                    abbrev_expand_map: Optional[dict] = None) -> Tuple[bool, dict]:
-    """EGL-level 图同构比较
+    """EGL-level graph isomorphism comparison.
 
     Args:
-        g1, g2: 两个 EGL 图
-        ignore_stereo: 是否忽略立体化学 (E/Z, R/S)
-        normalize_abbrevs: 是否归一化缩写名称
-        abbrev_expand_map: 缩写展开映射表（用于匹配展开 vs 未展开的情况）
+        g1, g2: Two EGL graphs
+        ignore_stereo: Whether to ignore stereochemistry (E/Z, R/S)
+        normalize_abbrevs: Whether to normalize abbreviation names
+        abbrev_expand_map: Abbreviation expansion map (for matching expanded vs. unexpanded cases)
 
     Returns:
         (is_isomorphic, details_dict)
-        details_dict 包含:
+        details_dict contains:
             - "match": bool
-            - "reason": str (匹配/不匹配原因)
-            - "unmatched_abbrevs": list (无法匹配的缩写)
+            - "reason": str (reason for match/mismatch)
+            - "unmatched_abbrevs": list (abbreviations that could not be matched)
     """
     details = {"match": False, "reason": "", "unmatched_abbrevs": []}
 
@@ -396,7 +397,7 @@ def egl_isomorphic(g1: EGLGraph, g2: EGLGraph,
 
 
 def _expand_graph(G: nx.Graph, abbrev_map: dict) -> nx.Graph:
-    """展开图中可展开的缩写节点"""
+    """Expand expandable abbreviation nodes in the graph."""
     G_new = G.copy()
     nodes_to_remove = []
     node_counter = [0]

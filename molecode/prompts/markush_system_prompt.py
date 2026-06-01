@@ -1,10 +1,10 @@
 """
-Extended EGL System Prompt v2 — 支持缩写基团 + CoT planning within EGL comments
+Extended EGL System Prompt v2 -- supports abbreviation groups + CoT planning within EGL comments.
 
-关键改进:
-1. CoT: 模型先在 %% 注释中分析图像、规划结构，再写 EGL
-2. 逐片段输出: 每个 substructure 的节点和键写在一起，避免截断导致键缺失
-3. 验证步骤: 最后在注释中验证原子数、键数、化合价
+Key improvements:
+1. CoT: the model first analyzes the image and plans the structure in %% comments, then writes EGL
+2. Fragment-by-fragment output: nodes and bonds for each substructure are written together to avoid missing bonds due to truncation
+3. Verification step: at the end, atom count, bond count, and valence are verified in comments
 """
 
 ESMILES_EGL_INSTRUCTION = '''
