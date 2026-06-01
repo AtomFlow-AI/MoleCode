@@ -12,6 +12,10 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![Powered by RDKit](https://img.shields.io/badge/powered%20by-RDKit-green.svg)](https://www.rdkit.org/)
 
+[![Works with Claude Code](https://img.shields.io/badge/Works%20with-Claude%20Code-d97757.svg)](.claude/skills/molecode/)
+[![Works with Codex](https://img.shields.io/badge/Works%20with-Codex-412991.svg)](AGENTS.md)
+[![Agent Skill](https://img.shields.io/badge/Agent-Skill-blue.svg)](.claude/skills/molecode/SKILL.md)
+
 <img src="docs/assets/overview.png" alt="MoleCode overview" width="100%">
 
 </div>
@@ -92,6 +96,33 @@ assert mol_to_smiles(mermaid_to_mol(graph)) == Chem.CanonSmiles("CC(=O)Oc1ccccc1
 ```
 
 ---
+
+## Works with your coding agent (Claude Code · Codex)
+
+MoleCode ships as a ready-to-use **[Agent Skill](https://docs.claude.com/en/docs/claude-code/skills)**,
+so coding agents can clone this repo and immediately reason over and edit
+molecules at the explicit-graph level — no extra setup, no MCP server required.
+
+| Agent | How it picks MoleCode up |
+| --- | --- |
+| **Claude Code** | Auto-discovers the skill at [`.claude/skills/molecode/`](.claude/skills/molecode/). Just ask it to understand or edit a molecule. |
+| **Codex** (and other agents) | Reads [`AGENTS.md`](AGENTS.md) at the repo root and uses the bundled CLI; interface metadata in [`agents/openai.yaml`](.claude/skills/molecode/agents/openai.yaml). |
+
+Instead of asking the model to hand-write SMILES — error-prone for anything
+non-trivial — the skill has it **convert → inspect the named atoms/bonds → edit
+the graph → validate**, all through one stable CLI:
+
+```bash
+python .claude/skills/molecode/scripts/molecode_convert.py doctor
+python .claude/skills/molecode/scripts/molecode_convert.py smiles-to-molecode "CCO" --name Ethanol
+python .claude/skills/molecode/scripts/molecode_convert.py validate --input edited.mmd     # formula, counts, round-trip
+python .claude/skills/molecode/scripts/molecode_convert.py molecode-to-smiles --input edited.mmd
+```
+
+The skill bundles the six conversion forms (SMILES / PSMILES / Markush ↔
+MoleCode) plus `validate`, `compare` (Markush-aware isomorphism) and `doctor`, a
+syntax reference for hand-editing graphs, and a file-based edit workflow built
+for large molecules. See [`.claude/skills/molecode/SKILL.md`](.claude/skills/molecode/SKILL.md).
 
 ## Three domains, one grammar
 
@@ -185,25 +216,6 @@ See [docs/05-tasks.md](docs/05-tasks.md) for the full task catalog.
 | Markush | ✅ | — | — | — |
 
 ---
-
-## Use with coding agents (Claude Code · Codex)
-
-MoleCode ships as a ready-to-use **Agent Skill** so a coding agent can grab this
-repo and immediately understand and edit molecules at the graph level:
-
-- **Claude Code** auto-discovers the skill at [`.claude/skills/molecode/`](.claude/skills/molecode/) —
-  just ask it to understand or edit a molecule.
-- **Codex / other agents** read [`AGENTS.md`](AGENTS.md) and use the bundled CLI.
-
-```bash
-python .claude/skills/molecode/scripts/molecode_convert.py doctor
-python .claude/skills/molecode/scripts/molecode_convert.py smiles-to-molecode "CCO" --name Ethanol
-python .claude/skills/molecode/scripts/molecode_convert.py validate --input edited.mmd
-```
-
-The skill bundles a stable CLI (the six conversion forms + `validate`/`compare`/
-`doctor`), a syntax reference for hand-editing graphs, and a file-based edit
-workflow — see [`.claude/skills/molecode/SKILL.md`](.claude/skills/molecode/SKILL.md).
 
 ## Repository layout
 
