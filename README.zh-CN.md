@@ -30,6 +30,17 @@
 
 ---
 
+## 欢迎试用我们的最新产品!
+请移步 [AtomFlow 官网](https://atomflow-ai.com/).
+
+<p align="center">
+  <img src="docs/assets/demo_atomchat.png" width="33%" />
+  <img src="docs/assets/demo_retro.png" width="33%" />
+  <img src="docs/assets/demo_paper_read.png" width="33%" />
+</p>
+
+<br>
+
 ## MoleCode 是什么?
 
 分子**本质上就是一张图**:原子是节点,化学键是边,化学性质由拓扑结构决定。然而大语言模型拿到的分子几乎总是 SMILES 这样的*线性字符串*,其中的图是**隐式的**——连接关系靠位置表达,支链靠语法表达,环则藏在索引数字里。在做任何化学推理之前,模型必须先*从语法中重建出分子图*,把推理预算耗在结构记账上。
