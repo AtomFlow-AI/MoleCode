@@ -8,14 +8,19 @@
 
 *不要再让语言模型从晦涩的字符串里还原分子结构——让它直接读取、书写并编辑结构。*
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![arXiv](https://img.shields.io/badge/arXiv-MoleCode-firebrick)](https://arxiv.org/abs/2605.16480)
+[![PDF](https://img.shields.io/badge/PDF-DADBDD)](https://arxiv.org/pdf/2605.16480)
+[![Website](https://img.shields.io/badge/AtomFlow-atomflow--ai.com-0b7285.svg)](https://atomflow-ai.com/)
+[![GitHub Stars](https://img.shields.io/github/stars/AtomFlow-AI/MoleCode.svg?style=social\&label=Stars)](https://github.com/AtomFlow-AI/MoleCode)
+<br>[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![Powered by RDKit](https://img.shields.io/badge/powered%20by-RDKit-green.svg)](https://www.rdkit.org/)
-[![Website](https://img.shields.io/badge/AtomFlow-atomflow--ai.com-0b7285.svg)](https://atomflow-ai.com/)
-
-[![Works with Claude Code](https://img.shields.io/badge/Works%20with-Claude%20Code-d97757.svg)](.claude/skills/molecode/)
+<br>[![Works with Claude Code](https://img.shields.io/badge/Works%20with-Claude%20Code-d97757.svg)](.claude/skills/molecode/)
 [![Works with Codex](https://img.shields.io/badge/Works%20with-Codex-412991.svg)](AGENTS.md)
 [![Agent Skill](https://img.shields.io/badge/Agent-Skill-blue.svg)](.claude/skills/molecode/SKILL.md)
+
+<br>
+<br>
 
 [English](README.md) | **中文**
 
