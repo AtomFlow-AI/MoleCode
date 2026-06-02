@@ -19,10 +19,10 @@
 [![Works with Codex](https://img.shields.io/badge/Works%20with-Codex-412991.svg)](AGENTS.md)
 [![Agent Skill](https://img.shields.io/badge/Agent-Skill-blue.svg)](.claude/skills/molecode/SKILL.md)
 
-<br>
-<br>
-
 [English](README.md) | **中文**
+
+<br>
+<br>
 
 <img src="docs/assets/overview.png" alt="MoleCode overview" width="100%">
 
