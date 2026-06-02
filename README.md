@@ -4,20 +4,27 @@
 
 ### An LLM-native, graph-explicit molecular language
 
-**From molecular strings to structural code: enabling LLMs to operate on chemistry directly.**
+Official repository for [**MoleCode unlocks structural intelligence in large language models**](https://arxiv.org/pdf/2605.16480).
 
-*Stop making language models reconstruct molecular structure from cryptic strings — let them read, write, and edit structure directly.*
+*Molecode presents molecules as code and enables LLMs to operate and reason on chemistry directly.*
+<br>*Instead of making language models reconstruct molecular structure from cryptic strings,*
+<br>*MoleCode lets them read, write, and edit on the structures directly.*
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![arXiv](https://img.shields.io/badge/arXiv-MoleCode-firebrick)](https://arxiv.org/abs/2605.16480)
+[![PDF](https://img.shields.io/badge/PDF-DADBDD)](https://arxiv.org/pdf/2605.16480)
+[![Website](https://img.shields.io/badge/AtomFlow-atomflow--ai.com-0b7285.svg)](https://atomflow-ai.com/)
+[![GitHub Stars](https://img.shields.io/github/stars/AtomFlow-AI/MoleCode.svg?style=social\&label=Stars)](https://github.com/AtomFlow-AI/MoleCode)
+<br>[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![Powered by RDKit](https://img.shields.io/badge/powered%20by-RDKit-green.svg)](https://www.rdkit.org/)
-[![Website](https://img.shields.io/badge/AtomFlow-atomflow--ai.com-0b7285.svg)](https://atomflow-ai.com/)
-
-[![Works with Claude Code](https://img.shields.io/badge/Works%20with-Claude%20Code-d97757.svg)](.claude/skills/molecode/)
+<br>[![Works with Claude Code](https://img.shields.io/badge/Works%20with-Claude%20Code-d97757.svg)](.claude/skills/molecode/)
 [![Works with Codex](https://img.shields.io/badge/Works%20with-Codex-412991.svg)](AGENTS.md)
 [![Agent Skill](https://img.shields.io/badge/Agent-Skill-blue.svg)](.claude/skills/molecode/SKILL.md)
 
 **English** | [中文](README.zh-CN.md)
+
+<br>
+<br>
 
 <img src="docs/assets/overview.png" alt="MoleCode overview" width="100%">
 
