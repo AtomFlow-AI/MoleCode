@@ -8,7 +8,7 @@ Official repository for [**MoleCode unlocks structural intelligence in large lan
 
 *Molecode presents molecules as code and enables LLMs to operate and reason on chemistry directly.*
 <br>*Instead of making language models reconstruct molecular structure from cryptic strings,*
-<br>*MoleCode lets them read, write, and edit on the structures directly.*
+<br>*MoleCode lets them read, write, and edit directly on the structures.*
 
 [![arXiv](https://img.shields.io/badge/arXiv-MoleCode-firebrick)](https://arxiv.org/abs/2605.16480)
 [![PDF](https://img.shields.io/badge/PDF-DADBDD)](https://arxiv.org/pdf/2605.16480)
