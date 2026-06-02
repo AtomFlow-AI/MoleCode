@@ -32,6 +32,17 @@ Official repository for [**MoleCode unlocks structural intelligence in large lan
 
 ---
 
+## Try our latest products on the official website!
+Please visit the [AtomFlow website](https://atomflow-ai.com/).
+
+<p align="center">
+  <img src="docs/assets/demo_atomchat.png" width="33%" />
+  <img src="docs/assets/demo_retro.png" width="33%" />
+  <img src="docs/assets/demo_paper_read.png" width="33%" />
+</p>
+
+<br>
+    
 ## What is MoleCode?
 
 A molecule **is** a graph: atoms are nodes, bonds are edges, and chemistry emerges from the topology. Yet large language models are almost always fed molecules as *linear strings* like SMILES, where the graph is **implicit** — connectivity is positional, branches are syntactic, and rings hide inside index digits. Before an LLM can do any chemistry, it must first *reconstruct the graph from the syntax*, spending reasoning budget on structural bookkeeping.
