@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "molecode"
 version = "0.1.0"
 description = "An LLM-native, graph-explicit molecular language (Mermaid-based) for molecules, polymers, and Markush structures."
-readme = "README.md"
+readme = "PYPI_README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "AtomFlow-AI" }]
@@ -29,6 +29,8 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/AtomFlow-AI/MoleCode"
 Repository = "https://github.com/AtomFlow-AI/MoleCode"
+Paper = "https://arxiv.org/abs/2605.16480"
+Website = "https://atomflow-ai.com/"
 
 [project.optional-dependencies]
 viz = ["pillow"]
