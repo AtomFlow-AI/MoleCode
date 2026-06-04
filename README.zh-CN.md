@@ -206,7 +206,7 @@ python examples/08_image_to_molecode.py    # OCSR:分子图片 -> MoleCode(视�
 ```python
 from molecode.prompts import MOLECULE_SYSTEM_PROMPT   # 作为系统提示交给 LLM
 from molecode.molecule import mol_to_mermaid          # 你的分子 -> 模型读取的内容
-from molecode.molecule import mermaid_to_mol           # 模型输出 -> 已校验的 RDKit Mol
+from molecode.molecule import mermaid_to_mol          # 模型输出 -> 已校验的 RDKit Mol
 ```
 
 ### 调用大语言模型
@@ -269,12 +269,12 @@ AGENTS.md                # 面向编码智能体的入口
 
 MoleCode 由 **[AtomFlow(原子流)](https://atomflow-ai.com/)** 开发与维护。
 
-AtomFlow 专注于 **LLM-native 的 AI 化学**——让语言模型直接在分子结构上操作,而不是面对晦涩的字符串。
+AtomFlow 专注于 **LLM-native 的 AI 化学**——让语言模型直接在化学结构上操作,而不是面对晦涩的隐式字符串（e.g., SMILES）。
 我们的工作以"以分子为中心"的应用为主,包括:
 
 - **分子对话与交互** —— 与分子对话;选中原子、键或片段,用自然语言进行编辑。
 - **结构感知的编辑** —— 可审计的、图层面的分子编辑。
-- **逆合成** —— 在显式结构之上的 LLM-native 合成路线规划。
+- **交互式逆合成** —— 在显式结构之上的 LLM-native 合成路线规划。
 - **文献阅读与结构解析** —— 从论文与专利中抽取结构,包括光学化学结构识别(OCSR)。
 
 MoleCode 是支撑这些产品的开放表示层——让分子结构对 LLM 而言变得显式、可编辑、可审计。
