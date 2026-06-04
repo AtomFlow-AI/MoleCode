@@ -97,10 +97,21 @@ Empirically (see the [MoleCode paper](#-citation) and [docs/06-why-it-works.md](
 ## Install
 
 ```bash
+pip install molecode          # from PyPI — pulls in rdkit + networkx
+```
+
+Or from source (for the examples, the Agent Skill, and development):
+
+```bash
 git clone https://github.com/AtomFlow-AI/MoleCode.git
 cd MoleCode
-pip install -e .          # installs rdkit + networkx
+pip install -e .
 ```
+
+> `pip install molecode` gives you the **library** (`molecode.molecule`,
+> `molecode.polymer`, `molecode.markush`, `molecode.prompts`, `molecode.llm`).
+> The runnable [`examples/`](examples) and the [Agent Skill](.claude/skills/molecode/)
+> live in the repository. Full API reference → [docs/api.md](docs/api.md).
 
 ## Quick start
 

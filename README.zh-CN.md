@@ -95,10 +95,21 @@ graph TB
 ## 安装
 
 ```bash
+pip install molecode          # 从 PyPI 安装 — 会自动带上 rdkit + networkx
+```
+
+或从源码安装(需要 examples、Agent Skill 或参与开发时):
+
+```bash
 git clone https://github.com/AtomFlow-AI/MoleCode.git
 cd MoleCode
-pip install -e .          # 会安装 rdkit + networkx
+pip install -e .
 ```
+
+> `pip install molecode` 装的是**库**(`molecode.molecule`、`molecode.polymer`、
+> `molecode.markush`、`molecode.prompts`、`molecode.llm`)。可运行的
+> [`examples/`](examples) 和 [Agent Skill](.claude/skills/molecode/) 在仓库里。
+> 完整 API 速查 → [docs/api.md](docs/api.md)。
 
 ## 快速上手
 
