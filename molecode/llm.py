@@ -26,6 +26,23 @@ Credentials may also come from the environment (so you never commit a key):
 Prefer the official ``openai`` SDK? You don't need this class at all — the
 MoleCode prompts are plain strings, so pass them straight to
 ``openai.OpenAI().chat.completions.create(...)``.
+
+Provider presets
+----------------
+``PROVIDER_PRESETS`` maps a provider name to its OpenAI Chat Completions base
+URL per region, so callers can opt into a provider without hard-coding URLs::
+
+    from molecode.llm import LLMClient, PROVIDER_PRESETS
+
+    client = LLMClient(api_key="...", provider="minimax", region="global_en",
+                       model="MiniMax-M3")
+    client = LLMClient(api_key="...", provider="minimax", region="cn_zh",
+                       model="MiniMax-M2.7")
+
+A preset resolves ``base_url`` from ``provider`` + ``region`` (falling back to
+``MOLECODE_BASE_URL``/``OPENAI_BASE_URL`` then the OpenAI default); an explicit
+``base_url`` always wins. ``MOLECODE_PROVIDER``/``MOLECODE_REGION`` mirror the
+constructor kwargs for environment-only configuration.
 """
 
 from __future__ import annotations
@@ -38,6 +55,15 @@ from typing import Any, Dict, List, Optional
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL = "gemini-3.1-pro-preview"
+
+# Provider-specific OpenAI Chat Completions base URLs, keyed by provider then
+# region. Each entry mirrors the provider's documented ``openai_base_url``.
+PROVIDER_PRESETS: Dict[str, Dict[str, str]] = {
+    "minimax": {
+        "global_en": "https://api.minimax.io/v1",
+        "cn_zh": "https://api.minimaxi.com/v1",
+    },
+}
 
 _IMAGE_MIME = {
     ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
@@ -73,9 +99,19 @@ class LLMClient:
     base_url:
         Chat-completions base URL (without the ``/chat/completions`` suffix).
         Falls back to ``$MOLECODE_BASE_URL`` then ``https://api.openai.com/v1``.
+        Ignored when ``provider`` resolves to a preset (an explicit ``base_url``
+        always wins over a preset).
     model:
         Default model name. Falls back to ``$MOLECODE_MODEL`` then
         ``gemini-3.1-pro-preview``.
+    provider:
+        Optional provider name (e.g. ``"minimax"``). When set, the base URL is
+        resolved from ``PROVIDER_PRESETS`` using ``region`` unless ``base_url``
+        is given explicitly. Falls back to ``$MOLECODE_PROVIDER``.
+    region:
+        Region key for the provider preset (e.g. ``"global_en"`` or
+        ``"cn_zh"``). Falls back to ``$MOLECODE_REGION`` then the preset's first
+        region.
     timeout:
         Per-request timeout in seconds.
     default_temperature:
@@ -88,6 +124,8 @@ class LLMClient:
         base_url: Optional[str] = None,
         model: Optional[str] = None,
         *,
+        provider: Optional[str] = None,
+        region: Optional[str] = None,
         timeout: float = 120.0,
         default_temperature: float = 0.0,
     ) -> None:
@@ -101,12 +139,29 @@ class LLMClient:
                 "No API key provided. Pass api_key=... or set the "
                 "MOLECODE_API_KEY (or OPENAI_API_KEY) environment variable."
             )
-        self.base_url = (
-            base_url or os.environ.get("MOLECODE_BASE_URL") or DEFAULT_BASE_URL
-        ).rstrip("/")
+        self.provider = provider or os.environ.get("MOLECODE_PROVIDER")
+        self.region = region or os.environ.get("MOLECODE_REGION")
+        self.base_url = self._resolve_base_url(base_url).rstrip("/")
         self.model = model or os.environ.get("MOLECODE_MODEL") or DEFAULT_MODEL
         self.timeout = timeout
         self.default_temperature = default_temperature
+
+    def _resolve_base_url(self, base_url: Optional[str]) -> str:
+        """Resolve the chat base URL from an explicit value, preset, or env."""
+        if base_url:
+            return base_url
+        env_url = os.environ.get("MOLECODE_BASE_URL") or os.environ.get(
+            "OPENAI_BASE_URL"
+        )
+        if env_url:
+            return env_url
+        if self.provider and self.provider.lower() in PROVIDER_PRESETS:
+            regions = PROVIDER_PRESETS[self.provider.lower()]
+            key = self.region if self.region and self.region in regions else None
+            if key is None:
+                key = next(iter(regions))
+            return regions[key]
+        return DEFAULT_BASE_URL
 
     def chat(
         self,
