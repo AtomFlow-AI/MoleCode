@@ -344,14 +344,18 @@ class LLMClient:
                 {"role": role, "content": self._anthropic_content(content)}
             )
 
+        resolved_temperature = (
+            self.default_temperature if temperature is None else temperature
+        )
         payload: Dict[str, Any] = {
             "model": model or self.model,
             "messages": converted_messages,
-            "temperature": (
-                self.default_temperature if temperature is None else temperature
-            ),
             **extra,
         }
+        # MiniMax's Anthropic-compatible endpoint defaults temperature to 1.0
+        # and rejects 0.0, which is this client's cross-transport default.
+        if self.provider != "minimax" or resolved_temperature > 0:
+            payload["temperature"] = resolved_temperature
         if system_parts:
             payload["system"] = "\n\n".join(system_parts)
 
@@ -359,7 +363,7 @@ class LLMClient:
             f"{self.base_url}/v1/messages",
             payload,
             {
-                "Authorization": f"Bearer {self.api_key}",
+                "X-Api-Key": self.api_key,
                 "Content-Type": "application/json",
             },
         )

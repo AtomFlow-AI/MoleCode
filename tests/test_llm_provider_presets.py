@@ -275,7 +275,7 @@ def test_anthropic_messages_request_and_response():
 
     assert out == "first second"
     assert captured["url"] == "https://api.minimax.io/anthropic/v1/messages"
-    assert captured["headers"]["Authorization"] == "Bearer dummy"
+    assert captured["headers"]["X-api-key"] == "dummy"
     assert captured["payload"] == {
         "model": "MiniMax-M3",
         "messages": [
@@ -294,10 +294,27 @@ def test_anthropic_messages_request_and_response():
             }
         ],
         "max_tokens": 512,
-        "temperature": 0.0,
         "thinking": {"type": "adaptive"},
         "system": "Return MoleCode.",
     }
+
+
+def test_anthropic_messages_sends_positive_temperature():
+    client = LLMClient(
+        api_key="dummy",
+        provider="minimax",
+        transport="anthropic",
+    )
+    captured = {}
+    response = {"content": [{"type": "text", "text": "ok"}]}
+    with mock.patch.object(
+        llm_mod.urllib.request,
+        "urlopen",
+        _capture_urlopen(captured, response),
+    ):
+        assert client.chat("hi", temperature=0.5) == "ok"
+
+    assert captured["payload"]["temperature"] == 0.5
 
 
 def test_anthropic_converts_local_image_to_base64(tmp_path):
