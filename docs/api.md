@@ -181,7 +181,7 @@ image_to_data_uri(path_or_url: str) -> str
 DEFAULT_MODEL      # 'gemini-3.1-pro-preview'
 DEFAULT_BASE_URL   # 'https://api.openai.com/v1'
 PROVIDER_PRESETS   # regional OpenAI and Anthropic base URLs
-PROVIDER_MODELS    # provider defaults and supported model IDs
+PROVIDER_MODELS    # provider defaults, supported model IDs, and model metadata
 ```
 
 Credentials fall back to env vars `MOLECODE_API_KEY` / `OPENAI_API_KEY`,

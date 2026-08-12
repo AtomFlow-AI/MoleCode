@@ -122,6 +122,34 @@ def test_minimax_uses_current_default_model():
     )
 
 
+def test_minimax_model_metadata_is_current():
+    metadata = PROVIDER_MODELS["minimax"]["metadata"]
+    assert metadata == {
+        "MiniMax-M3": {
+            "context_window": 1_000_000,
+            "pricing_usd_per_million_tokens": {
+                "input": 0.6,
+                "output": 2.4,
+                "cache_read": 0.12,
+                "cache_write": None,
+            },
+            "input_modalities": ("text", "image", "video"),
+            "thinking": ("adaptive", "disabled"),
+        },
+        "MiniMax-M2.7": {
+            "context_window": 204_800,
+            "pricing_usd_per_million_tokens": {
+                "input": 0.3,
+                "output": 1.2,
+                "cache_read": 0.06,
+                "cache_write": 0.375,
+            },
+            "input_modalities": ("text",),
+            "thinking": ("always_on",),
+        },
+    }
+
+
 def test_provider_via_environment():
     with mock.patch.dict(
         os.environ,
