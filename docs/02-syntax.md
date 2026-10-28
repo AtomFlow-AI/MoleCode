@@ -122,6 +122,10 @@ graph TB
   `%%` comments are ignored as usual.
 - AND/OR members carry **no** absolute `_R/_S` suffix (sound base projection).
 - Axial: `Pfx_AX_1{ax=cw; axis=Pfx_C_7,Pfx_C_8; ref1=Pfx_C_6; ref2=Pfx_C_9}`
+- Groups may also contain axis members: `Pfx_SG_1{sg=AND:1; axes=Pfx_AX_1}`
+- E/Z reference atoms (only when the default is ambiguous): `Pfx_EZ_1{ez=Z; bond=Pfx_C_2,Pfx_C_3; ref1=Pfx_C_1; ref2=Pfx_Br_1}`
+- Planar: `Pfx_PL_1{pl=+; plane=Pfx_C_1,Pfx_C_2,Pfx_C_3; ref1=Pfx_C_4; ref2=Pfx_C_5}`
+- Helical: `Pfx_HL_1{hl=M; path=Pfx_C_1,Pfx_C_2,Pfx_C_3,Pfx_C_4}`
 - Isotope: `Pfx_ISO_1{iso=13; atom=Pfx_C_1}`
 
 See [07-stereo.md](07-stereo.md) for the full grammar, reference-frame definition,

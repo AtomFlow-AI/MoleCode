@@ -20,6 +20,7 @@ python examples/01_molecule_roundtrip.py
 | `07_reasoning.py` | **推理** — 反应产物预测 | 可选 |
 | `08_image_to_molecode.py` | **OCSR** — 分子图片 → MoleCode 图 | 视觉模型 |
 | `09_stereo_roundtrip.py` | **立体化学** — R/S、r/s、E/Z、AND/OR 组、轴手性、同位素 往返(profile `stereo/1`)| 否 |
+| `10_advanced_stereo.py` | **进阶立体** — 3D 推导平面/螺旋手性、E/Z 显式参考原子、键级增强立体 | 否 |
 
 `08_image_to_molecode.py` 演示 OCSR(光学化学结构识别):它把一个示例分子渲染成 PNG
 (或使用你传入的图片路径),将图片连同 Markush 版 MoleCode 系统提示一起发给**支持视觉的**

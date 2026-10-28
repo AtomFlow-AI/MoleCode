@@ -81,7 +81,17 @@ fp = stereo_fingerprint(mol)                       # CIP / groups / axial / isot
 - `validate_document` returns `{"ok": bool, "issues": [...]}` and flags I1
   over-claims, group conflicts, axial reference errors and judge blindness.
 - `stereo_coverage` counts centres / pseudo-asymmetric centres / groups / axial
-  bonds / isotopes.
+  bonds / isotopes / planar and helical units.
+- `canonical_kekulize` canonicalizes aromatic rings into a deterministic Kekule form
+  (doc -> mol -> doc is byte-stable).
+- `set_double_bond_stereo` sets an E/Z bond with explicit reference atoms and
+  consistent bond directions.
+- `planar_chirality_sign` / `helical_chirality_sign` derive a local sign from a 3D conformer;
+  `set_planar_chirality` / `set_helical_chirality` attach the unit to a mol (stored in the
+  `_molecode_stereo_extra` property and re-emitted by the writer).
+- `read_extra_stereo` / `extra_stereo_records` inspect attached planar/helical units.
+- Validation covers invariants I1-I12, including malformed planar/helical records and
+  group-to-axis references.
 - The stock reader ignores the extension layer, so a stereo document remains a
   valid base MoleCode document.
 

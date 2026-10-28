@@ -126,11 +126,20 @@ Rules that matter when editing:
 
 - AND/OR group members must **not** carry an absolute `_R/_S` suffix — the
   relative claim would become an absolute one (the reader flags this as I1).
-- `par=cw|ccw` is defined against the **order in which the atom's incident
-  edges appear in the document**; append new bonds for an existing centre rather
-  than inserting them before its existing edges.
+- `par=cw|ccw` is defined against the **persistent atom-id order of the
+  explicit neighbours** (implicit H fixed), so reordering/inserting bond lines or
+  editing elsewhere does not change an existing parity record.
+- Groups may mix atom and axis members: `Pfx_SG_1{sg=AND:1; mem=Pfx_C_1; axes=Pfx_AX_1}`.
+- Explicit E/Z reference atoms (only when the default first-neighbour rule would
+  be ambiguous): `Pfx_EZ_1{ez=Z; bond=Pfx_C_2,Pfx_C_3; ref1=Pfx_C_1; ref2=Pfx_Br_1}`.
+- Planar chirality: `Pfx_PL_1{pl=+; plane=Pfx_C_1,Pfx_C_2,Pfx_C_3; ref1=Pfx_C_4; ref2=Pfx_C_5}`
+  (sign derived from 3D as `(r1.n - r2.n)`; RDKit has no native planar stereo).
+- Helical chirality: `Pfx_HL_1{hl=M; path=Pfx_C_1,Pfx_C_2,Pfx_C_3,Pfx_C_4}`
+  (M/P from summed triple products along the path; mirror flips M/P).
 - Verify with RDKit CXSMILES + StereoGroup signatures, not only full InChIKey
-  (InChI drops AND/OR groups and is blind to axial chirality).
+  (InChI drops AND/OR groups and is blind to axial/planar/helical chirality).
+- The reader enforces invariants I1-I12 and reports problems in
+  `parser.warnings` (or via `stereo.validate_document`).
 
 Full grammar, invariants and API: see `docs/07-stereo.md` in the repository.
 
