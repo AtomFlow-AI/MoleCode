@@ -13,9 +13,21 @@ from rdkit import Chem
 from rdkit.Chem import Descriptors
 from collections import defaultdict
 
+from . import stereo as stereo_mod
+
 
 class MolToMermaidConverter:
-    """Convert an RDKit Mol object to Mermaid Graph format."""
+    """Convert an RDKit Mol object to Mermaid Graph format.
+
+    The converter has two layers:
+
+    * the **base projection** (atoms, bonds, explicit H counts, charge, E/Z):
+      unchanged MoleCode grammar, readable by the stock parser;
+    * the optional **stereo extension** (profile stereo/1): local parity
+      records, enhanced stereo groups, axial chirality and isotopes, written as
+      {...} objects that the stock parser ignores.  See
+      molecode.molecule.stereo for the design and invariants.
+    """
 
     # Bond type mapping: RDKit -> Mermaid
     BOND_TYPE_MAP = {
@@ -26,16 +38,37 @@ class MolToMermaidConverter:
         Chem.BondType.DATIVE: '-->',
     }
 
-    def __init__(self, subgraph_name: str = "Molecule"):
+    def __init__(
+        self,
+        subgraph_name: str = "Molecule",
+        stereo_layer: bool = True,
+        parity_mode: str = "group_only",
+    ):
         """
         Initialize the converter.
 
         Args:
             subgraph_name: Subgraph name (used in the Mermaid subgraph declaration)
+            stereo_layer: write the stereo/1 extension layer when the molecule
+                carries stereo information beyond the base grammar.
+            parity_mode: "group_only" (default: local parity only where an
+                absolute descriptor is impossible, i.e. AND/OR and
+                pseudo-asymmetric members), "all" (also store a local parity
+                source record for every tetrahedral centre, so a remote local
+                edit never rewrites source records; opt-in research mode) or
+                "off".
         """
+        if parity_mode not in stereo_mod.PARITY_MODES:
+            raise ValueError(
+                f"parity_mode must be one of {stereo_mod.PARITY_MODES}, "
+                f"got {parity_mode!r}"
+            )
         self.subgraph_name = subgraph_name
+        self.stereo_layer = stereo_layer
+        self.parity_mode = parity_mode
         self.atom_id_map: Dict[int, str] = {}  # atom_idx -> atom_id
         self.element_counter: Dict[str, int] = defaultdict(int)  # Element counter
+        self.stereo_info = stereo_mod.StereoInfo()  # extracted stereo facts
 
     def _sanitize_identifier(self, name: str) -> str:
         """
@@ -79,14 +112,13 @@ class MolToMermaidConverter:
         if mol is None:
             return ""
 
-        # Work on a copy to avoid modifying the original molecule
-        mol = Chem.Mol(mol)
-
-        # Ensure stereochemistry (including chirality) is correctly assigned
-        try:
-            Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
-        except Exception:
-            pass
+        # Work on a copy to avoid modifying the original molecule.  prepare_mol
+        # runs legacy stereo perception and then the declared modern CIP
+        # implementation (hanson2018); the CIP labels are extracted as a derived
+        # descriptor cache, never as the source of truth.
+        mol = stereo_mod.prepare_mol(mol)
+        modern_cip = stereo_mod.modern_cip_map(mol)
+        self.stereo_info = stereo_mod.extract_stereo_info(mol, cip=modern_cip)
 
         # Convert aromatic molecules to Kekule form (explicit single/double bonds)
         # Graph notation can only represent explicit bonds, not aromaticity
@@ -107,8 +139,8 @@ class MolToMermaidConverter:
         # 2. Extract bond information
         bonds_info = self._extract_bonds(mol)
 
-        # 3. Generate Mermaid text
-        return self._generate_mermaid(atoms_info, bonds_info)
+        # 3. Generate Mermaid text (base projection + optional stereo layer)
+        return self._generate_mermaid(atoms_info, bonds_info, mol)
 
     def _extract_atoms(self, mol: Chem.Mol) -> List[Tuple[str, str]]:
         """
@@ -148,6 +180,7 @@ class MolToMermaidConverter:
             or SubgraphName_Symbol_Number_Chirality
         """
         symbol = atom.GetSymbol()
+        idx = atom.GetIdx()
 
         # Count by element type
         self.element_counter[symbol] += 1
@@ -159,13 +192,15 @@ class MolToMermaidConverter:
         # Base ID
         base_id = f"{clean_name}_{symbol}_{count}"
 
-        # Use the absolute CIP configuration computed by RDKit rather than
-        # treating CHI_TETRAHEDRAL_CW/CCW directly as R/S. CW/CCW depends on
-        # atom ordering; only _CIPCode is a serializable absolute R/S label.
-        if atom.HasProp('_CIPCode'):
-            cip_code = atom.GetProp('_CIPCode')
-            if cip_code in ('R', 'S'):
-                return f"{base_id}_{cip_code}"
+        # Absolute CIP suffix (R/S) and pseudo-asymmetric suffix (r/s) come from
+        # the extracted stereo info.  The suffix is a *derived descriptor cache*
+        # bound to the declared CIP implementation; the source of truth for a
+        # tetrahedral centre is its local parity record (profile stereo/1),
+        # except for AND/OR members which must NOT carry an absolute suffix at
+        # all (invariant I1) and are therefore absent from abs_suffix.
+        suffix = self.stereo_info.abs_suffix.get(idx)
+        if suffix:
+            return f"{base_id}_{suffix}"
 
         # No chirality or unspecified
         return base_id
@@ -265,7 +300,8 @@ class MolToMermaidConverter:
         return base_symbol
 
     def _generate_mermaid(self, atoms: List[Tuple[str, str]],
-                         bonds: List[Tuple[str, str, str]]) -> str:
+                         bonds: List[Tuple[str, str, str]],
+                         mol: Chem.Mol) -> str:
         """
         Generate Mermaid Graph text.
 
@@ -301,13 +337,37 @@ class MolToMermaidConverter:
         for atom1_id, atom2_id, bond_symbol in bonds:
             lines.append(f'        {atom1_id} {bond_symbol} {atom2_id}')
 
+        # Extension layer (stereo/1).  Every line added here is ignored by the
+        # stock parser, so the document keeps a sound base projection.
+        if self.stereo_layer:
+            header, extension = stereo_mod.render_stereo_layer(
+                mol,
+                self.stereo_info,
+                self.atom_id_map,
+                subgraph_id,
+                parity_mode=self.parity_mode,
+            )
+            if header:
+                lines[1:1] = [f'    {hline}' for hline in header]
+            if extension:
+                lines.append('')
+                lines.append(f'        {stereo_mod.STEREO_SECTION_COMMENT}')
+                lines.extend(f'        {eline}' for eline in extension)
+
         # Subgraph end
         lines.append('    end')
 
         return '\n'.join(lines)
 
 
-def mol_to_mermaid(mol: Chem.Mol, name: str = "Molecule", kekulize: bool = True) -> str:
+def mol_to_mermaid(
+    mol: Chem.Mol,
+    name: str = "Molecule",
+    kekulize: bool = True,
+    stereo_layer: bool = True,
+    parity_mode: str = "group_only",
+    parity: Optional[str] = None,
+) -> str:
     """
     Convert an RDKit Mol to Mermaid Graph (convenience function).
 
@@ -316,11 +376,22 @@ def mol_to_mermaid(mol: Chem.Mol, name: str = "Molecule", kekulize: bool = True)
         name: Molecule name (used as the subgraph name)
         kekulize: True -> Kekule form (explicit single/double bonds, default);
                   False -> retain aromatic bonds as <--> symbols (suitable for editing tasks)
+        stereo_layer: write the stereo/1 extension layer when needed (default
+                  True; the base projection is never changed by it).
+        parity_mode: "group_only" (default: local parity only for AND/OR and
+                  pseudo-asymmetric elements), "all" (local parity source of
+                  truth for every tetrahedral centre; opt-in), "off".
 
     Returns:
         Text in Mermaid format
     """
-    converter = MolToMermaidConverter(subgraph_name=name)
+    if parity is not None:  # alias used by the external benchmark harness
+        parity_mode = parity
+    converter = MolToMermaidConverter(
+        subgraph_name=name,
+        stereo_layer=stereo_layer,
+        parity_mode=parity_mode,
+    )
     return converter.convert(mol, kekulize=kekulize)
 
 
