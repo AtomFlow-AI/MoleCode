@@ -54,7 +54,7 @@ Because the same three primitives express atoms, repeat units, and variable grou
 
 | Domain | Module | Adds |
 | --- | --- | --- |
-| Small molecules | [`molecode.molecule`](../molecode/molecule) | atoms, bonds, stereochemistry |
+| Small molecules | [`molecode.molecule`](../molecode/molecule) | atoms, bonds, stereochemistry (R/S, enhanced stereo, axial, isotopes) |
 | Polymers | [`molecode.polymer`](../molecode/polymer) | explicit repeat unit + `×n`, `TL`/`TR` termini |
 | Markush | [`molecode.markush`](../molecode/markush) | `{}` abbreviation nodes for R-groups |
 
@@ -69,3 +69,4 @@ MoleCode is a drop-in representation for any LLM, enabling four task families �
 - [04-markush.md](04-markush.md) — Markush structures
 - [05-tasks.md](05-tasks.md) — the four LLM task families
 - [06-why-it-works.md](06-why-it-works.md) — the empirical evidence
+- [07-stereo.md](07-stereo.md) — the `stereo/1` chirality extension

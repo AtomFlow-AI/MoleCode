@@ -19,6 +19,8 @@ python examples/01_molecule_roundtrip.py
 | `06_editing.py` | **Editing** — local graph edits (add/delete/substitute) | optional |
 | `07_reasoning.py` | **Reasoning** — reaction-product prediction | optional |
 | `08_image_to_molecode.py` | **OCSR** — molecule image → MoleCode graph | vision model |
+| `09_stereo_roundtrip.py` | **Stereochemistry** — R/S, r/s, E/Z, AND/OR groups, axial, isotopes round-trip (profile `stereo/1`) | no |
+| `10_advanced_stereo.py` | **Advanced stereo** — planar/helical chirality from 3D, explicit E/Z reference atoms, bond-level enhanced stereo | no |
 
 `08_image_to_molecode.py` performs OCSR (optical chemical structure recognition):
 it renders a demo molecule to a PNG (or takes an image path you pass), sends the

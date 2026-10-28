@@ -93,13 +93,55 @@ treats Kekulé and aromatic forms as equivalent.
 
 ## Stereochemistry
 
+Base grammar (unchanged, always safe to hand-write):
+
 - **Double-bond E/Z** — annotate the double bond:
   `but2ene_C_2 ===|E| but2ene_C_3` (also `===|Z|`).
 - **Tetrahedral chirality** — append the **absolute CIP** label `_R` / `_S` to the
   atom id: `mol_C_2_R[CH]`. This is the CIP configuration, not RDKit's
   order-dependent CW/CCW tag.
+- **Pseudo-asymmetric centres** — lowercase `_r` / `_s` suffix (e.g.
+  `pentitol_C_3_s[CH]`); the stock parser treats this as part of the atom id
+  (the constitution is unchanged, so the projection stays sound).
 
-Both round-trip through SMILES (and PSMILES for polymers).
+All of the above round-trip through SMILES (and PSMILES for polymers).
+
+### Optional `stereo/1` extension layer
+
+Documents that need **relative configuration (AND/OR)**, **axial chirality**,
+**isotopes** or an explicit **local-parity source of truth** add an extension
+layer of `{...}` object lines; the base parser skips every such line (and any
+`-.->` member edge), so the file stays readable by stock MoleCode:
+
+```
+%% molecode-profile: stereo/1
+%% cip-impl: hanson2018 (rdkit.Chem.rdCIPLabeler)
+Thr_TET_1{tet=Thr_C_1; par=cw}                      %% local parity (source truth)
+Thr_SG_1{sg=AND:1; mem=Thr_C_1,Thr_C_3_S}          %% enhanced stereo group
+Biaryl_AX_1{ax=cw; axis=Biaryl_C_7,Biaryl_C_8; ref1=Biaryl_C_6; ref2=Biaryl_C_9}
+Lac_ISO_1{iso=13; atom=Lac_C_1}                     %% isotope token
+```
+
+Rules that matter when editing:
+
+- AND/OR group members must **not** carry an absolute `_R/_S` suffix — the
+  relative claim would become an absolute one (the reader flags this as I1).
+- `par=cw|ccw` is defined against the **persistent atom-id order of the
+  explicit neighbours** (implicit H fixed), so reordering/inserting bond lines or
+  editing elsewhere does not change an existing parity record.
+- Groups may mix atom and axis members: `Pfx_SG_1{sg=AND:1; mem=Pfx_C_1; axes=Pfx_AX_1}`.
+- Explicit E/Z reference atoms (only when the default first-neighbour rule would
+  be ambiguous): `Pfx_EZ_1{ez=Z; bond=Pfx_C_2,Pfx_C_3; ref1=Pfx_C_1; ref2=Pfx_Br_1}`.
+- Planar chirality: `Pfx_PL_1{pl=+; plane=Pfx_C_1,Pfx_C_2,Pfx_C_3; ref1=Pfx_C_4; ref2=Pfx_C_5}`
+  (sign derived from 3D as `(r1.n - r2.n)`; RDKit has no native planar stereo).
+- Helical chirality: `Pfx_HL_1{hl=M; path=Pfx_C_1,Pfx_C_2,Pfx_C_3,Pfx_C_4}`
+  (M/P from summed triple products along the path; mirror flips M/P).
+- Verify with RDKit CXSMILES + StereoGroup signatures, not only full InChIKey
+  (InChI drops AND/OR groups and is blind to axial/planar/helical chirality).
+- The reader enforces invariants I1-I12 and reports problems in
+  `parser.warnings` (or via `stereo.validate_document`).
+
+Full grammar, invariants and API: see `docs/07-stereo.md` in the repository.
 
 ## Multi-subgraph molecules and reactions
 

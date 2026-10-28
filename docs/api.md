@@ -39,8 +39,10 @@ MoleCode graph for small molecules.
 **Functions**
 
 ```python
-mol_to_mermaid(mol: Chem.Mol, name: str = "Molecule", kekulize: bool = True) -> str
-mermaid_to_mol(mermaid_text: str, strict: bool = True) -> Optional[Chem.Mol]
+mol_to_mermaid(mol: Chem.Mol, name: str = "Molecule", kekulize: bool = True,
+                stereo_layer: bool = True, parity_mode: str = "group_only") -> str
+mermaid_to_mol(mermaid_text: str, strict: bool = True,
+               parse_stereo_layer: bool = True) -> Optional[Chem.Mol]
 mol_to_smiles(mol: Chem.Mol) -> str
 mol_to_inchi(mol: Chem.Mol) -> str
 has_invalid_atoms(mol: Chem.Mol) -> bool
@@ -52,6 +54,46 @@ visualize_mols_grid(mols, legends=None, mols_per_row=4, sub_img_size=(300, 300),
 - `strict=True` makes `mermaid_to_mol` return `None` if the graph contains
   unrecognized/dummy atoms; use `strict=False` to keep them as `*` placeholders.
 - `kekulize=False` emits aromatic bonds as `<-->` instead of Kekulé single/double.
+
+**Stereo extension (profile `stereo/1`)**
+
+The molecule converters accept an optional stereo extension layer (see
+[07-stereo.md](07-stereo.md)).  `stereo_layer=True` (default) writes it when the
+molecule carries stereo beyond the base grammar; `parity_mode` selects the
+amount of local-parity source truth (`"group_only"` default, `"all"` opt-in,
+`"off"`).
+`parse_stereo_layer=False` reproduces the stock base-parser semantics.
+
+```python
+from rdkit import Chem
+from molecode.molecule import (
+    mol_to_mermaid, mermaid_to_mol,
+    prepare_mol, modern_cip_map, extract_stereo_info, stereo_fingerprint,
+    stereo_coverage, validate_document, PROFILE_ID, CIP_IMPL,
+)
+
+mol = Chem.MolFromSmiles("N[C@@H](C)[C@H](O)C(=O)O |&1:1,3|")
+doc = mol_to_mermaid(mol, name="Thr")              # extension layer included
+report = validate_document(doc)                    # invariant checks (I1..I6)
+fp = stereo_fingerprint(mol)                       # CIP / groups / axial / isotopes
+```
+
+- `validate_document` returns `{"ok": bool, "issues": [...]}` and flags I1
+  over-claims, group conflicts, axial reference errors and judge blindness.
+- `stereo_coverage` counts centres / pseudo-asymmetric centres / groups / axial
+  bonds / isotopes / planar and helical units.
+- `canonical_kekulize` canonicalizes aromatic rings into a deterministic Kekule form
+  (doc -> mol -> doc is byte-stable).
+- `set_double_bond_stereo` sets an E/Z bond with explicit reference atoms and
+  consistent bond directions.
+- `planar_chirality_sign` / `helical_chirality_sign` derive a local sign from a 3D conformer;
+  `set_planar_chirality` / `set_helical_chirality` attach the unit to a mol (stored in the
+  `_molecode_stereo_extra` property and re-emitted by the writer).
+- `read_extra_stereo` / `extra_stereo_records` inspect attached planar/helical units.
+- Validation covers invariants I1-I12, including malformed planar/helical records and
+  group-to-axis references.
+- The stock reader ignores the extension layer, so a stereo document remains a
+  valid base MoleCode document.
 
 **Classes** — `MolToMermaidConverter(subgraph_name="Molecule").convert(mol, kekulize=True)`,
 `MermaidMolParser().parse_mermaid_graph(text)` (the functions above wrap these).
