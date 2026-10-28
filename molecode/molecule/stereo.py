@@ -57,6 +57,7 @@ I6 judge      - full InChIKey is not a valid judge when AND/OR or axial
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -274,18 +275,55 @@ class AxialRecord:
 
 
 @dataclass
+class EZRecord:
+    """Explicit reference atoms for an E/Z double bond.
+
+    Only emitted when the reader's default reference atoms (first neighbour of
+    each end) would not reproduce the same geometry -- it removes the remaining
+    ambiguity of the base E/Z token without changing it.
+    """
+
+    bond_idx: int
+    stereo: str                      # E | Z | cis | trans
+    ref1: int
+    ref2: int
+
+
+@dataclass
+class PlanarRecord:
+    """Planar chirality: a plane (>=3 atoms) + one reference above/below each face."""
+
+    sign: str                        # + | - (local sign) or pR | pS label
+    plane: List[int] = field(default_factory=list)
+    ref1: int = 0
+    ref2: int = 0
+
+
+@dataclass
+class HelicalRecord:
+    """Helical chirality: a path of >=4 atoms forming the helix backbone."""
+
+    sign: str                        # M | P
+    path: List[int] = field(default_factory=list)
+
+
+@dataclass
 class StereoInfo:
     isotopes: Dict[int, int] = field(default_factory=dict)
     abs_suffix: Dict[int, str] = field(default_factory=dict)
     local_par: Dict[int, str] = field(default_factory=dict)
     groups: List[StereoGroupRecord] = field(default_factory=list)
     axial: List[AxialRecord] = field(default_factory=list)
+    ez_refs: List[EZRecord] = field(default_factory=list)
+    planar: List[PlanarRecord] = field(default_factory=list)
+    helical: List[HelicalRecord] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
         return not (self.isotopes or self.abs_suffix or self.local_par
-                    or self.groups or self.axial)
+                    or self.groups or self.axial or self.ez_refs
+                    or self.planar or self.helical)
 
 
 @dataclass
@@ -293,14 +331,23 @@ class ParsedStereoLayer:
     profile: Optional[str] = None
     cip_impl: Optional[str] = None
     tet: List[Tuple[str, str]] = field(default_factory=list)      # (atom doc id, par)
-    groups: List[Tuple[str, int, List[str]]] = field(default_factory=list)
-    axial: List[Tuple[str, str, str, str, str]] = field(default_factory=list)
+    # (group type, read id, atom ids, axis object ids)
+    groups: List[Tuple[str, int, List[str], List[str]]] = field(default_factory=list)
+    # (object id, chirality, axis atom id 1, axis atom id 2, ref1, ref2)
+    axial: List[Tuple[str, str, str, str, str, str]] = field(default_factory=list)
+    # (stereo token, bond atom id 1, bond atom id 2, ref1, ref2)
+    ez: List[Tuple[str, str, str, str, str]] = field(default_factory=list)
+    # (sign, plane atom ids, ref1, ref2)
+    planar: List[Tuple[str, List[str], str, str]] = field(default_factory=list)
+    # (sign, path atom ids)
+    helical: List[Tuple[str, List[str]]] = field(default_factory=list)
     isotopes: List[Tuple[int, str]] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
-        return not (self.tet or self.groups or self.axial or self.isotopes)
+        return not (self.tet or self.groups or self.axial or self.ez
+                    or self.planar or self.helical or self.isotopes)
 
 
 # ---------------------------------------------------------------------------
@@ -377,12 +424,6 @@ def extract_stereo_info(
         bidx = bond.GetIdx()
         a1 = bond.GetBeginAtomIdx()
         a2 = bond.GetEndAtomIdx()
-        gname = group_of_bond.get(bidx)
-        if gname in ("AND", "OR"):
-            info.warnings.append(
-                f"axial bond {bidx} is in an {gname} stereo group; "
-                "bond-level enhanced stereo is not supported yet"
-            )
         stored = list(bond.GetStereoAtoms())
         ref1 = stored[0] if len(stored) >= 2 else None
         ref2 = stored[1] if len(stored) >= 2 else None
@@ -400,6 +441,23 @@ def extract_stereo_info(
 
     if resolve_axial and info.axial:
         _resolve_axial_records(mol, info)
+
+    # -- E/Z reference atoms: emitted only where the reader's default is ambiguous
+    for bond in mol.GetBonds():
+        token = bond_stereo_token(bond)
+        if token is None:
+            continue
+        chosen = choose_ez_reference(mol, bond)
+        if chosen is not None:
+            info.ez_refs.append(
+                EZRecord(bond.GetIdx(), token, chosen[0], chosen[1])
+            )
+
+    # -- planar / helical chirality (RDKit cannot represent these; mol property)
+    planar, helical, extra_warnings = extra_stereo_records(mol)
+    info.planar.extend(planar)
+    info.helical.extend(helical)
+    info.warnings.extend(extra_warnings)
     return info
 
 
@@ -523,30 +581,70 @@ def render_stereo_layer(
                 and info.abs_suffix.get(idx) in ("R", "S")
             ):
                 continue
+            atom = mol.GetAtomWithIdx(idx)
+            par = canonical_par_from_tag(
+                atom.GetChiralTag(), _neighbour_doc_ids(id_map, mol, idx)
+            )
             body.append(
-                f"{ids.next('TET')}{{tet={_doc_id(id_map, idx)}; "
-                f"par={info.local_par[idx]}}}"
+                f"{ids.next('TET')}{{tet={_doc_id(id_map, idx)}; par={par}}}"
             )
 
-    # S2a: enhanced stereo groups
-    for rec in info.groups:
-        members = ",".join(_doc_id(id_map, idx) for idx in rec.atoms)
-        if not members:
-            continue
+    # S2a: axial chirality (before groups: groups reference AX object ids)
+    ax_oid_by_bond: Dict[int, str] = {}
+    for n, rec in enumerate(info.axial, start=1):
+        oid = f"{prefix}_AX_{n}"
+        bond = mol.GetBondWithIdx(rec.bond_idx)
+        a1, a2 = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
         body.append(
-            f"{ids.next('SG')}{{sg={rec.group_type}:{rec.read_id}; mem={members}}}"
+            f"{oid}{{ax={rec.chirality}; axis={_doc_id(id_map, a1)},"
+            f"{_doc_id(id_map, a2)}; ref1={_doc_id(id_map, rec.ref1)}; "
+            f"ref2={_doc_id(id_map, rec.ref2)}}}"
+        )
+        ax_oid_by_bond[rec.bond_idx] = oid
+    ids.counts["AX"] = len(info.axial)
+
+    # S2b: explicit E/Z reference atoms (only when the default is ambiguous)
+    for rec in info.ez_refs:
+        bond = mol.GetBondWithIdx(rec.bond_idx)
+        a1, a2 = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
+        body.append(
+            f"{ids.next('EZ')}{{ez={rec.stereo}; bond={_doc_id(id_map, a1)},"
+            f"{_doc_id(id_map, a2)}; ref1={_doc_id(id_map, rec.ref1)}; "
+            f"ref2={_doc_id(id_map, rec.ref2)}}}"
         )
 
-    # S2b: axial chirality
-    if info.axial:
-        for line in render_axial_lines(
-            mol, info, id_map, prefix,
-            first_index=ids.counts.get("AX", 0) + 1,
-        ):
-            body.append(line)
-        ids.counts["AX"] = ids.counts.get("AX", 0) + len(info.axial)
+    # S2c: planar chirality
+    for rec in info.planar:
+        plane = ",".join(_doc_id(id_map, i) for i in rec.plane)
+        body.append(
+            f"{ids.next('PL')}{{pl={rec.sign}; plane={plane}; "
+            f"ref1={_doc_id(id_map, rec.ref1)}; ref2={_doc_id(id_map, rec.ref2)}}}"
+        )
 
-    # S2c: isotopes
+    # S2d: helical chirality
+    for rec in info.helical:
+        path = ",".join(_doc_id(id_map, i) for i in rec.path)
+        body.append(f"{ids.next('HL')}{{hl={rec.sign}; path={path}}}")
+
+    # S2e: enhanced stereo groups (atom members and/or axis members)
+    for rec in info.groups:
+        fields = []
+        members = ",".join(_doc_id(id_map, idx) for idx in rec.atoms)
+        if members:
+            fields.append(f"mem={members}")
+        axes = ",".join(
+            ax_oid_by_bond[b] for b in rec.bonds if b in ax_oid_by_bond
+        )
+        if axes:
+            fields.append(f"axes={axes}")
+        if not fields:
+            continue
+        body.append(
+            ids.next("SG") + "{sg=" + f"{rec.group_type}:{rec.read_id}; "
+            + "; ".join(fields) + "}"
+        )
+
+    # S2f: isotopes
     for idx in sorted(info.isotopes):
         body.append(
             f"{ids.next('ISO')}{{iso={info.isotopes[idx]}; atom={_doc_id(id_map, idx)}}}"
@@ -583,6 +681,390 @@ def base_atom_id(doc_id: str) -> str:
     """Strip an absolute/pseudo-asymmetric CIP suffix from an atom doc id."""
     match = _SUFFIX_RE.match(doc_id.strip())
     return match.group("base") if match else doc_id.strip()
+
+
+def _parse_id_sort_key(doc_id: str):
+    """Sort key for persistent atom ids (element + counter, numeric aware)."""
+    base = base_atom_id(doc_id)
+    parts = base.rsplit("_", 2)
+    if len(parts) == 3:
+        prefix, symbol, number = parts
+        try:
+            return (prefix, symbol, int(number))
+        except ValueError:
+            pass
+    return (base, "", 0)
+
+
+def _permutation_parity(order, canonical) -> int:
+    """0 for an even permutation from order to canonical, 1 for odd."""
+    pos = {key: i for i, key in enumerate(canonical)}
+    try:
+        sequence = [pos[key] for key in order]
+    except KeyError:  # pragma: no cover - inconsistent neighbour sets
+        return 0
+    inversions = 0
+    for i in range(len(sequence)):
+        for j in range(i + 1, len(sequence)):
+            if sequence[i] > sequence[j]:
+                inversions += 1
+    return inversions % 2
+
+
+def _flip_par(par: str) -> str:
+    return "ccw" if par == "cw" else "cw"
+
+
+def canonical_par_from_tag(tag, neighbour_doc_ids) -> str:
+    """Triangular parity of a chiral tag in the canonical (atom-id) frame.
+
+    The frame is the set of explicit neighbours sorted by persistent atom id;
+    the implicit hydrogen (degree-3 centres) is a fixed ligand and does not
+    enter the permutation.  Because ids are persistent, editing the document
+    (reordering or inserting bond lines, adding atoms elsewhere) no longer
+    changes the meaning of an existing parity record.
+    """
+    par = tag_to_par(tag)
+    if par is None:
+        raise ValueError("atom has no tetrahedral chiral tag")
+    order = list(neighbour_doc_ids)
+    canonical = sorted(order, key=_parse_id_sort_key)
+    if _permutation_parity(order, canonical):
+        par = _flip_par(par)
+    return par
+
+
+def tag_from_canonical_par(par: str, neighbour_doc_ids):
+    """Inverse of canonical_par_from_tag: canonical parity -> RDKit chiral tag."""
+    order = list(neighbour_doc_ids)
+    canonical = sorted(order, key=_parse_id_sort_key)
+    tag = par_to_tag(par)
+    if _permutation_parity(order, canonical):
+        tag = _CCW if tag == _CW else _CW
+    return tag
+
+
+def _neighbour_doc_ids(id_map, mol, atom_idx):
+    return [id_map[n.GetIdx()] for n in mol.GetAtomWithIdx(atom_idx).GetNeighbors()]
+
+
+# ---------------------------------------------------------------------------
+# extras that RDKit cannot represent (planar / helical chirality)
+# ---------------------------------------------------------------------------
+EXTRA_STEREO_PROP = "_molecode_stereo_extra"
+
+
+def read_extra_stereo(mol: Chem.Mol):
+    """Read the planar/helical records attached to a mol as a JSON property."""
+    raw = mol.GetProp(EXTRA_STEREO_PROP) if mol.HasProp(EXTRA_STEREO_PROP) else ""
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return []
+    return data if isinstance(data, list) else []
+
+
+def write_extra_stereo(mol: Chem.Mol, records) -> None:
+    mol.SetProp(EXTRA_STEREO_PROP, json.dumps(list(records), ensure_ascii=False))
+
+
+def _conformer_positions(mol: Chem.Mol, idxs):
+    if mol.GetNumConformers() == 0:
+        raise ValueError("planar/helical sign derivation needs a 3D conformer")
+    conf = mol.GetConformer()
+    return [conf.GetAtomPosition(int(i)) for i in idxs]
+
+
+def _cross(a, b):
+    # a and b are (x, y, z) tuples (see _sub); accept Point3D via indexing too.
+    ax, ay, az = a[0], a[1], a[2]
+    bx, by, bz = b[0], b[1], b[2]
+    return (ay * bz - az * by,
+            az * bx - ax * bz,
+            ax * by - ay * bx)
+
+
+def _sub(a, b):
+    return (a.x - b.x, a.y - b.y, a.z - b.z)
+
+
+def _dot(a, b):
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
+def planar_chirality_sign(mol: Chem.Mol, plane_atoms, ref1: int, ref2: int) -> str:
+    """Local sign of a planar-chiral unit from 3D coordinates.
+
+    Convention: the plane is defined by the first three plane atoms (p0, p1, p2)
+    in the order given, normal n = (p1-p0) x (p2-p0).  The two reference atoms
+    sit on (or near) opposite faces of the plane; sign = sign of
+    ((r1-p0) . n - (r2-p0) . n).  Swapping the reference atoms or reflecting the
+    molecule flips the sign, so the sign is a genuine chirality bit relative to
+    the documented reference frame (not a geometric artifact).
+    """
+    if len(plane_atoms) < 3:
+        raise ValueError("a planar unit needs at least 3 plane atoms")
+    pos = _conformer_positions(mol, [plane_atoms[0], plane_atoms[1], plane_atoms[2], ref1, ref2])
+    p0, p1, p2, r1, r2 = pos
+    normal = _cross(_sub(p1, p0), _sub(p2, p0))
+    delta = _dot(_sub(r1, p0), normal) - _dot(_sub(r2, p0), normal)
+    return "+" if delta > 0 else "-"
+
+
+def helical_chirality_sign(mol: Chem.Mol, path_atoms) -> str:
+    """M/P helical chirality from 3D coordinates.
+
+    Convention: sum the signed triple products of consecutive step vectors along
+    the path; positive -> M, negative -> P.  A mirror image flips M/P.
+    """
+    if len(path_atoms) < 4:
+        raise ValueError("a helical unit needs at least 4 path atoms")
+    pos = _conformer_positions(mol, list(path_atoms))
+    total = 0.0
+    for i in range(len(pos) - 3):
+        a, b, c, d = pos[i], pos[i + 1], pos[i + 2], pos[i + 3]
+        total += _dot(_cross(_sub(b, a), _sub(c, b)), _sub(d, c))
+    return "M" if total > 0 else "P"
+
+
+def set_planar_chirality(mol: Chem.Mol, plane_atoms, ref1: int, ref2: int,
+                         sign: Optional[str] = None) -> str:
+    """Attach a planar-chiral unit to a mol (sign derived from 3D if omitted)."""
+    if sign is None:
+        sign = planar_chirality_sign(mol, plane_atoms, ref1, ref2)
+    plane = [int(i) for i in plane_atoms]
+    records = [
+        r for r in read_extra_stereo(mol)
+        if not (r.get("kind") == "planar" and set(int(i) for i in r.get("plane", [])) == set(plane))
+    ]
+    records.append({"kind": "planar", "sign": sign, "plane": plane,
+                    "ref1": int(ref1), "ref2": int(ref2)})
+    write_extra_stereo(mol, records)
+    return sign
+
+
+def set_helical_chirality(mol: Chem.Mol, path_atoms, sign: Optional[str] = None) -> str:
+    """Attach a helical-chiral unit to a mol (M/P derived from 3D if omitted)."""
+    path = [int(i) for i in path_atoms]
+    if sign is None:
+        sign = helical_chirality_sign(mol, path)
+    records = [
+        r for r in read_extra_stereo(mol)
+        if not (r.get("kind") == "helical" and set(int(i) for i in r.get("path", [])) == set(path))
+    ]
+    records.append({"kind": "helical", "sign": sign, "path": path})
+    write_extra_stereo(mol, records)
+    return sign
+
+
+def extra_stereo_records(mol: Chem.Mol):
+    """Validate the planar/helical records attached to a mol."""
+    planar: List[PlanarRecord] = []
+    helical: List[HelicalRecord] = []
+    warnings: List[str] = []
+    n = mol.GetNumAtoms()
+
+    def valid(idxs):
+        return all(isinstance(i, int) and 0 <= i < n for i in idxs)
+
+    for rec in read_extra_stereo(mol):
+        try:
+            kind = rec.get("kind")
+            if kind == "planar":
+                plane = [int(i) for i in rec.get("plane", [])]
+                ref1, ref2 = int(rec["ref1"]), int(rec["ref2"])
+                if len(plane) < 3 or not valid(plane + [ref1, ref2]):
+                    raise ValueError("invalid plane/ref atom indices")
+                planar.append(PlanarRecord(str(rec["sign"]), plane, ref1, ref2))
+            elif kind == "helical":
+                path = [int(i) for i in rec.get("path", [])]
+                if len(path) < 4 or not valid(path):
+                    raise ValueError("invalid helical path")
+                helical.append(HelicalRecord(str(rec["sign"]), path))
+            else:
+                warnings.append(f"unknown extra stereo kind {kind!r}")
+        except Exception as exc:
+            warnings.append(f"dropping malformed extra stereo record: {exc}")
+    return planar, helical, warnings
+
+
+# ---------------------------------------------------------------------------
+# E/Z reference atoms (base token + explicit refs when needed)
+# ---------------------------------------------------------------------------
+_EZ_ENUM = {}
+
+
+def _init_ez_enum():
+    for token, attr in (("E", "STEREOE"), ("Z", "STEREOZ"),
+                        ("CIS", "STEREOCIS"), ("TRANS", "STEREOTRANS")):
+        value = getattr(Chem.BondStereo, attr, None)
+        if value is not None:
+            _EZ_ENUM[token] = value
+
+
+_init_ez_enum()
+
+
+def bond_stereo_token(bond: Chem.Bond) -> Optional[str]:
+    """Base-grammar token for a double bond (E/Z/cis/trans), or None."""
+    stereo = bond.GetStereo()
+    for token, value in _EZ_ENUM.items():
+        if stereo == value:
+            return "E" if token == "E" else ("Z" if token == "Z" else token.lower())
+    return None
+
+
+def _ez_enum_for(token: str):
+    t = token.strip().upper()
+    if t not in _EZ_ENUM:
+        raise ValueError(f"unsupported E/Z token {token!r}")
+    return _EZ_ENUM[t]
+
+
+def set_double_bond_stereo(mol, i1: int, i2: int, token: str,
+                           ref1: int, ref2: int) -> None:
+    """Set an E/Z double bond with explicit reference atoms + bond directions."""
+    bond = mol.GetBondBetweenAtoms(int(i1), int(i2))
+    if bond is None:
+        raise ValueError(f"no bond between atoms {i1} and {i2}")
+    bond.SetStereoAtoms(int(ref1), int(ref2))
+    bond.SetStereo(_ez_enum_for(token))
+    # Clear stale directions on all adjacent single bonds first: a previous
+    # default assignment (or the input mol) may point the *other* substituent
+    # the other way, and conflicting directions make RDKit drop the E/Z label.
+    for atom_idx in (int(i1), int(i2)):
+        for nb in mol.GetAtomWithIdx(atom_idx).GetBonds():
+            if nb.GetBondType() == Chem.BondType.SINGLE:
+                nb.SetBondDir(Chem.BondDir.NONE)
+    e_like = token.strip().upper() in ("E", "TRANS")
+    dir1 = mol.GetBondBetweenAtoms(int(i1), int(ref1))
+    dir2 = mol.GetBondBetweenAtoms(int(i2), int(ref2))
+    if dir1 is not None:
+        dir1.SetBondDir(Chem.BondDir.ENDUPRIGHT)
+    if dir2 is not None:
+        dir2.SetBondDir(Chem.BondDir.ENDUPRIGHT if e_like else Chem.BondDir.ENDDOWNRIGHT)
+
+
+def ez_reference_ok(mol: Chem.Mol, bond_idx: int, ref1: int, ref2: int,
+                    token: str) -> bool:
+    """Does (ref1, ref2) reproduce the same E/Z geometry when read back?
+
+    The check mirrors the reader exactly: same token, same reference atoms and
+    the same bond-direction recovery, so a passing check implies a lossless
+    round-trip (not merely an InChI-equivalent one).
+    """
+    baseline = inchi_key(mol)
+    if not baseline:
+        return True  # cannot judge; keep the default (no extension object)
+    bond = mol.GetBondWithIdx(int(bond_idx))
+    i1, i2 = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
+    cand = Chem.Mol(mol)
+    try:
+        set_double_bond_stereo(cand, i1, i2, token, ref1, ref2)
+        Chem.AssignStereochemistry(cand, cleanIt=False, force=True)
+    except Exception:
+        return False
+    return inchi_key(cand) == baseline
+
+
+def choose_ez_reference(mol: Chem.Mol, bond: Chem.Bond):
+    """Return explicit refs if the reader default would be ambiguous, else None."""
+    a1, a2 = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
+    nbrs1 = _neighbors_excluding(mol, a1, a2)
+    nbrs2 = _neighbors_excluding(mol, a2, a1)
+    if not nbrs1 or not nbrs2:
+        return None
+    token = bond_stereo_token(bond)
+    if token is None:
+        return None
+    # The reader's convention is the first neighbour of each end (document
+    # bond order), independent of whatever stereo atoms the input mol carried.
+    default = (nbrs1[0], nbrs2[0])
+    if ez_reference_ok(mol, bond.GetIdx(), default[0], default[1], token):
+        return None
+    for r1 in nbrs1:
+        for r2 in nbrs2:
+            if (r1, r2) == default:
+                continue
+            if ez_reference_ok(mol, bond.GetIdx(), r1, r2, token):
+                return (r1, r2)
+    return default
+
+
+# ---------------------------------------------------------------------------
+# canonical Kekule form (byte-stable round-trip of aromatic documents)
+# ---------------------------------------------------------------------------
+def canonical_kekulize(mol: Chem.Mol) -> Chem.Mol:
+    """Kekulize into a canonical, representation-independent Kekule form.
+
+    RDKit's Kekulize keeps whichever resonance structure the input happened to
+    carry, so doc -> mol -> doc could flip ring bond orders.  We take the
+    canonical Kekule SMILES, map it back onto the original atom order via atom
+    map numbers and copy the canonical bond orders over.  The map step is
+    iterated to a fixed point (one canonical-SMILES pass can still depend on the
+    input resonance form).
+    """
+    current = _canonical_kekulize_once(Chem.Mol(mol))
+    try:
+        for _ in range(4):
+            nxt = _canonical_kekulize_once(current)
+            if _bond_pattern(nxt) == _bond_pattern(current):
+                return nxt
+            current = nxt
+    except Exception:
+        pass
+    return current
+
+
+def _bond_pattern(mol: Chem.Mol):
+    return tuple(sorted(
+        (b.GetBeginAtomIdx(), b.GetEndAtomIdx(), str(b.GetBondType()))
+        for b in mol.GetBonds()
+    ))
+
+
+def _canonical_kekulize_once(mol: Chem.Mol) -> Chem.Mol:
+    m = Chem.Mol(mol)
+    try:
+        # 1. Canonical *aromatic* SMILES with atom-map numbers -> a canonical
+        #    atom ordering and an unambiguous index mapping.
+        tagged = Chem.RWMol(m)
+        for atom in tagged.GetAtoms():
+            atom.SetAtomMapNum(atom.GetIdx() + 1)
+        smiles = Chem.MolToSmiles(tagged.GetMol())
+        # 2. Re-parse fresh: the parsed mol is aromatic and its Kekule choice is
+        #    independent of whatever resonance form the input carried.
+        parsed = Chem.MolFromSmiles(smiles)
+        if parsed is None or parsed.GetNumAtoms() != m.GetNumAtoms():
+            return m
+        Chem.Kekulize(parsed, clearAromaticFlags=True)
+        atom_map = {}
+        for atom in parsed.GetAtoms():
+            atom_map[atom.GetIdx()] = int(atom.GetAtomMapNum()) - 1
+        if sorted(atom_map.values()) != list(range(m.GetNumAtoms())):
+            return m
+        # 3. Copy the canonical Kekule bond orders back onto the input atom order.
+        out = Chem.RWMol(m)
+        for atom in out.GetAtoms():
+            atom.SetIsAromatic(False)
+            atom.SetAtomMapNum(0)
+        for bond in out.GetBonds():
+            bond.SetIsAromatic(False)
+            bond.SetBondType(Chem.BondType.SINGLE)
+        for bond in parsed.GetBonds():
+            i = atom_map[bond.GetBeginAtomIdx()]
+            j = atom_map[bond.GetEndAtomIdx()]
+            target = out.GetBondBetweenAtoms(i, j)
+            if target is None:
+                return m
+            target.SetBondType(bond.GetBondType())
+        result = out.GetMol()
+        result.UpdatePropertyCache(strict=False)
+        return result
+    except Exception:
+        return m
 
 
 def _parse_object_body(body: str) -> Dict[str, str]:
@@ -626,15 +1108,39 @@ def parse_stereo_layer(text: str) -> ParsedStereoLayer:
                 else:
                     gtype, read_id_i = spec, 1
                 members = [m.strip() for m in fields.get("mem", "").split(",") if m.strip()]
-                layer.groups.append((gtype.strip().upper(), read_id_i, members))
+                axes = [a.strip() for a in fields.get("axes", "").split(",") if a.strip()]
+                if not members and not axes:
+                    raise ValueError("sg object needs mem and/or axes")
+                layer.groups.append((gtype.strip().upper(), read_id_i, members, axes))
             elif "ax" in fields:
                 axis = [a.strip() for a in fields.get("axis", "").split(",") if a.strip()]
                 if len(axis) != 2:
                     raise ValueError("ax object needs exactly two axis atom ids")
                 layer.axial.append((
-                    fields["ax"].strip().lower(), axis[0], axis[1],
+                    oid, fields["ax"].strip().lower(), axis[0], axis[1],
                     fields.get("ref1", "").strip(), fields.get("ref2", "").strip(),
                 ))
+            elif "ez" in fields:
+                bond = [a.strip() for a in fields.get("bond", "").split(",") if a.strip()]
+                if len(bond) != 2:
+                    raise ValueError("ez object needs exactly two bond atom ids")
+                layer.ez.append((
+                    fields["ez"].strip(), bond[0], bond[1],
+                    fields.get("ref1", "").strip(), fields.get("ref2", "").strip(),
+                ))
+            elif "pl" in fields:
+                plane = [a.strip() for a in fields.get("plane", "").split(",") if a.strip()]
+                if len(plane) < 3:
+                    raise ValueError("pl object needs at least three plane atom ids")
+                layer.planar.append((
+                    fields["pl"].strip(), plane,
+                    fields.get("ref1", "").strip(), fields.get("ref2", "").strip(),
+                ))
+            elif "hl" in fields:
+                path = [a.strip() for a in fields.get("path", "").split(",") if a.strip()]
+                if len(path) < 4:
+                    raise ValueError("hl object needs at least four path atom ids")
+                layer.helical.append((fields["hl"].strip(), path))
             elif "iso" in fields:
                 mass = int(fields["iso"])
                 layer.isotopes.append((mass, fields.get("atom", "").strip()))
@@ -695,6 +1201,7 @@ def apply_stereo_layer(
     (empty when the document is consistent).
     """
     issues: List[str] = list(layer.warnings)
+    idx_to_doc = {idx: doc_id for doc_id, idx in doc_id_to_idx.items()}
     rw = Chem.RWMol(mol)
 
     def resolve(doc_id: str, what: str = "atom") -> Optional[int]:
@@ -710,59 +1217,23 @@ def apply_stereo_layer(
             continue
         rw.GetAtomWithIdx(idx).SetIsotope(mass)
 
-    # S1: local parity records (source of truth)
+    # S1: local parity records (canonical atom-id reference frame)
     for doc_id, par in layer.tet:
         idx = resolve(doc_id)
         if idx is None:
             continue
+        atom = rw.GetAtomWithIdx(idx)
+        neighbours = [idx_to_doc.get(n.GetIdx(), "") for n in atom.GetNeighbors()]
         try:
-            tag = par_to_tag(par)
+            tag = tag_from_canonical_par(par, neighbours)
         except ValueError as exc:
             issues.append(str(exc))
             continue
-        rw.GetAtomWithIdx(idx).SetChiralTag(tag)
+        atom.SetChiralTag(tag)
 
-    # S2a: enhanced stereo groups.  The group objects must be created on (and
-    # attached to) the same RWMol instance, otherwise RDKit silently drops them.
-    groups = []
-    group_members: Dict[int, str] = {}
-    for gtype, read_id, member_ids in layer.groups:
-        if gtype not in GROUP_NAME_TO_TYPE:
-            issues.append(f"unknown stereo group type {gtype!r}")
-            continue
-        idxs: List[int] = []
-        for doc_id in member_ids:
-            idx = resolve(doc_id)
-            if idx is None:
-                continue
-            if idx in group_members:
-                issues.append(
-                    f"atom {doc_id} belongs to two stereo groups "
-                    f"({group_members[idx]} and {gtype})"
-                )
-            group_members[idx] = gtype
-            idxs.append(idx)
-        if not idxs:
-            continue
-        if not hasattr(Chem, "CreateStereoGroup"):  # pragma: no cover - old RDKit
-            issues.append(
-                "this RDKit build has no Chem.CreateStereoGroup; "
-                "enhanced-stereo groups are kept as local parity only"
-            )
-            groups = []
-            break
-        try:
-            groups.append(Chem.CreateStereoGroup(GROUP_NAME_TO_TYPE[gtype], rw, idxs, []))
-        except Exception as exc:
-            issues.append(f"cannot build stereo group {gtype}:{read_id}: {exc}")
-    if groups:
-        try:
-            rw.SetStereoGroups(groups)
-        except Exception as exc:
-            issues.append(f"cannot attach stereo groups: {exc}")
-
-    # S2b: axial chirality
-    for chir, id1, id2, ref1, ref2 in layer.axial:
+    # S2a: axial chirality first (enhanced-stereo groups may reference axes)
+    ax_oid_to_bond: Dict[str, int] = {}
+    for oid, chir, id1, id2, ref1, ref2 in layer.axial:
         i1, i2 = resolve(id1), resolve(id2)
         r1, r2 = resolve(ref1, "axial ref1"), resolve(ref2, "axial ref2")
         if None in (i1, i2, r1, r2):
@@ -771,16 +1242,8 @@ def apply_stereo_layer(
         if bond is None:
             issues.append(f"axial axis {id1}-{id2} is not a bond")
             continue
-        nbr1 = {
-            n.GetIdx()
-            for n in rw.GetAtomWithIdx(i1).GetNeighbors()
-            if n.GetIdx() != i2
-        }
-        nbr2 = {
-            n.GetIdx()
-            for n in rw.GetAtomWithIdx(i2).GetNeighbors()
-            if n.GetIdx() != i1
-        }
+        nbr1 = {n.GetIdx() for n in rw.GetAtomWithIdx(i1).GetNeighbors() if n.GetIdx() != i2}
+        nbr2 = {n.GetIdx() for n in rw.GetAtomWithIdx(i2).GetNeighbors() if n.GetIdx() != i1}
         if r1 not in nbr1:
             issues.append(f"axial ref1 {ref1} is not a neighbour of {id1}")
             continue
@@ -797,17 +1260,114 @@ def apply_stereo_layer(
         try:
             bond.SetStereoAtoms(r1, r2)
             bond.SetStereo(cw if chir == "cw" else ccw)
+            ax_oid_to_bond[oid] = bond.GetIdx()
         except Exception as exc:
             issues.append(f"cannot set axial stereo on {id1}-{id2}: {exc}")
 
+    # S2b: enhanced stereo groups (atom members and/or axis members).  The group
+    # objects must be created on (and attached to) the same RWMol instance.
+    groups = []
+    group_atoms: Dict[int, str] = {}
+    group_bonds: Dict[int, str] = {}
+    for gtype, read_id, member_ids, axis_ids in layer.groups:
+        if gtype not in GROUP_NAME_TO_TYPE:
+            issues.append(f"unknown stereo group type {gtype!r}")
+            continue
+        idxs: List[int] = []
+        bond_ids: List[int] = []
+        for doc_id in member_ids:
+            idx = resolve(doc_id)
+            if idx is None:
+                continue
+            if idx in group_atoms:
+                issues.append(
+                    f"atom {doc_id} belongs to two stereo groups "
+                    f"({group_atoms[idx]} and {gtype})"
+                )
+            group_atoms[idx] = gtype
+            idxs.append(idx)
+        for axis_oid in axis_ids:
+            bidx = ax_oid_to_bond.get(axis_oid)
+            if bidx is None:
+                issues.append(f"axis object {axis_oid!r} not found for group {read_id}")
+                continue
+            if bidx in group_bonds:
+                issues.append(
+                    f"axis {axis_oid} belongs to two stereo groups "
+                    f"({group_bonds[bidx]} and {gtype})"
+                )
+            group_bonds[bidx] = gtype
+            bond_ids.append(bidx)
+        if not idxs and not bond_ids:
+            continue
+        if not hasattr(Chem, "CreateStereoGroup"):  # pragma: no cover - old RDKit
+            issues.append(
+                "this RDKit build has no Chem.CreateStereoGroup; "
+                "enhanced-stereo groups are kept as local parity only"
+            )
+            groups = []
+            break
+        try:
+            groups.append(Chem.CreateStereoGroup(GROUP_NAME_TO_TYPE[gtype], rw, idxs, bond_ids))
+        except Exception as exc:
+            issues.append(f"cannot build stereo group {gtype}:{read_id}: {exc}")
+    if groups:
+        try:
+            rw.SetStereoGroups(groups)
+        except Exception as exc:
+            issues.append(f"cannot attach stereo groups: {exc}")
+
+    # S2c: explicit E/Z reference atoms (override the base default)
+    for token, id1, id2, ref1, ref2 in layer.ez:
+        i1, i2 = resolve(id1), resolve(id2)
+        r1, r2 = resolve(ref1, "E/Z ref1"), resolve(ref2, "E/Z ref2")
+        if None in (i1, i2, r1, r2):
+            continue
+        try:
+            set_double_bond_stereo(rw, i1, i2, token, r1, r2)
+        except Exception as exc:
+            issues.append(f"cannot set E/Z refs on {id1}-{id2}: {exc}")
+
+    # S2d: planar / helical chirality (RDKit cannot represent these; mol property)
+    extra = [r for r in read_extra_stereo(rw)
+             if r.get("kind") not in ("planar", "helical")]
+    for sign, plane_ids, ref1, ref2 in layer.planar:
+        plane = []
+        ok = True
+        for pid in plane_ids:
+            idx = resolve(pid, "plane atom")
+            if idx is None:
+                ok = False
+                break
+            plane.append(idx)
+        r1 = resolve(ref1, "planar ref1")
+        r2 = resolve(ref2, "planar ref2")
+        if not ok or r1 is None or r2 is None:
+            continue
+        extra.append({"kind": "planar", "sign": sign, "plane": plane,
+                      "ref1": r1, "ref2": r2})
+    for sign, path_ids in layer.helical:
+        path = []
+        ok = True
+        for pid in path_ids:
+            idx = resolve(pid, "helical path atom")
+            if idx is None:
+                ok = False
+                break
+            path.append(idx)
+        if not ok:
+            continue
+        extra.append({"kind": "helical", "sign": sign, "path": path})
+    if extra:
+        write_extra_stereo(rw, extra)
+
     mol1 = rw.GetMol()
 
-    # I4 continuation: CIP labels re-derived on the final graph
-    if _rdCIPLabeler is not None:
-        try:
-            _rdCIPLabeler.AssignCIPLabels(mol1)
-        except Exception:
-            pass
+    # NOTE: do not run rdCIPLabeler on the working mol here.  RDKit's CIP
+    # labeler rewrites double-bond stereo (E/Z -> CIS/TRANS), which would make
+    # the reader's output re-serialize with a different base token.  CIP labels
+    # are a derived cache and are computed on throw-away copies elsewhere
+    # (modern_cip_map / stereo_fingerprint).
     try:
         Chem.AssignStereochemistry(mol1, cleanIt=False, force=True)
     except Exception:
@@ -841,9 +1401,18 @@ def _isotope_signature(mol: Chem.Mol) -> List[Tuple[int, int]]:
     return sorted((a.GetIdx(), a.GetIsotope()) for a in mol.GetAtoms() if a.GetIsotope())
 
 
+def _extra_signature(mol: Chem.Mol):
+    planar, helical, _warnings = extra_stereo_records(mol)
+    return (
+        sorted((r.sign, tuple(sorted(r.plane)), r.ref1, r.ref2) for r in planar),
+        sorted((r.sign, tuple(r.path)) for r in helical),
+    )
+
+
 def stereo_fingerprint(mol: Chem.Mol) -> Dict[str, object]:
     """Index-based stereo fingerprint (for tests of the same atom ordering)."""
     m = prepare_mol(mol)
+    planar, helical = _extra_signature(mol)
     return {
         "smiles": canonical_smiles(m),
         "inchi_key": inchi_key(m),
@@ -852,6 +1421,8 @@ def stereo_fingerprint(mol: Chem.Mol) -> Dict[str, object]:
         "groups": _group_signature(m),
         "axial": _axial_signature(m),
         "isotopes": _isotope_signature(m),
+        "planar": planar,
+        "helical": helical,
     }
 
 
@@ -865,8 +1436,8 @@ def validate_document(
     passed in by the parser (which strips the suffix when building the mol).
     Returns a dict with ok and an issues list.
     """
-    issues: List[str] = []
     layer = parse_stereo_layer(text)
+    issues: List[str] = list(layer.warnings)  # malformed object lines are hard issues
     suffix_map = suffix_map or {}
 
     # I2: duplicate / invalid local parity records
@@ -881,21 +1452,42 @@ def validate_document(
             )
         seen_tet[doc_id] = par
 
-    # I3: each stereo element belongs to at most one group
-    membership: Dict[str, List[str]] = {}
-    for gtype, _read_id, members in layer.groups:
+    # I5: axial records must carry valid chirality and reference atoms
+    axial_oids = set()
+    for oid, chir, id1, id2, ref1, ref2 in layer.axial:
+        axial_oids.add(oid)
+        if chir not in ("cw", "ccw"):
+            issues.append(f"I5 axial {oid} has invalid chirality {chir!r}")
+        if not ref1 or not ref2:
+            issues.append(f"I5 axial {id1}-{id2} is missing ref1/ref2")
+
+    # I3/I12: group membership for atoms AND axes; every axis ref must exist
+    atom_membership: Dict[str, List[str]] = {}
+    axis_membership: Dict[str, List[str]] = {}
+    for gtype, read_id, members, axes in layer.groups:
         if gtype not in ("AND", "OR", "ABS"):
             issues.append(f"I3 unknown stereo group type {gtype!r}")
         for member in members:
-            membership.setdefault(member, []).append(gtype)
-    for atom_id, gtypes in sorted(membership.items()):
-        if len(gtypes) > 1:
-            issues.append(f"I3 group conflict: atom {atom_id} is in groups {gtypes}")
+            atom_membership.setdefault(member, []).append(gtype)
+        for axis in axes:
+            if axis not in axial_oids:
+                issues.append(
+                    f"I12 group {read_id} references unknown axis object {axis!r}"
+                )
+            axis_membership.setdefault(axis, []).append(gtype)
+    for table, kind in ((atom_membership, "atom"), (axis_membership, "axis")):
+        for element, gtypes in sorted(table.items()):
+            unique = sorted(set(gtypes))
+            if len(unique) < 2:
+                continue
+            if kind == "atom" and unique == ["AND", "ABS"]:
+                pass  # covered by the explicit ABS/relative rule below
+            issues.append(f"I3 group conflict: {kind} {element} is in groups {unique}")
 
     # I1: no absolute suffix on AND/OR members (match by base id so that a
     # tampered "C_1_S" is caught even when the group member is written "C_1")
     group_of_atom: Dict[str, str] = {}
-    for gtype, _read_id, members in layer.groups:
+    for gtype, _read_id, members, _axes in layer.groups:
         for member in members:
             group_of_atom[member] = gtype
             group_of_atom[base_atom_id(member)] = gtype
@@ -907,24 +1499,39 @@ def validate_document(
                 f"but belongs to an {gtype} group"
             )
 
-    # I3: ABS and AND/OR membership must be disjoint
-    abs_members = {m for g, _r, ms in layer.groups if g == "ABS" for m in ms}
-    rel_members = {m for g, _r, ms in layer.groups if g in ("AND", "OR") for m in ms}
-    for atom_id in sorted(abs_members & rel_members):
-        issues.append(f"I3 group conflict: atom {atom_id} is both ABS and relative")
-
-    # I5: axial refs must be present
-    for chir, id1, id2, ref1, ref2 in layer.axial:
+    # I2 (E/Z): valid stereo token and complete references
+    for token, id1, id2, ref1, ref2 in layer.ez:
+        if token.strip().upper() not in ("E", "Z", "CIS", "TRANS"):
+            issues.append(f"I2 invalid E/Z token {token!r} on bond {id1}-{id2}")
         if not ref1 or not ref2:
-            issues.append(f"I5 axial {id1}-{id2} is missing ref1/ref2")
-        if chir not in ("cw", "ccw"):
-            issues.append(f"I5 axial {id1}-{id2} has invalid chirality {chir!r}")
+            issues.append(f"I2 E/Z bond {id1}-{id2} is missing ref1/ref2")
+
+    # I9: planar chirality records
+    for sign, plane, ref1, ref2 in layer.planar:
+        if len(plane) < 3:
+            issues.append(f"I9 planar unit needs at least 3 plane atoms, got {len(plane)}")
+        if sign.strip() not in ("+", "-", "pR", "pS"):
+            issues.append(f"I9 invalid planar sign {sign!r}")
+        if not ref1 or not ref2:
+            issues.append("I9 planar unit is missing ref1/ref2")
+
+    # I10: helical chirality records
+    for sign, path in layer.helical:
+        if len(path) < 4:
+            issues.append(f"I10 helical unit needs at least 4 path atoms, got {len(path)}")
+        if sign.strip() not in ("M", "P"):
+            issues.append(f"I10 invalid helical sign {sign!r}")
 
     # I6: judge adequacy
-    if any(g in ("AND", "OR") for g, _r, _m in layer.groups) or layer.axial:
+    needs_multi_judge = (
+        any(g in ("AND", "OR") for g, _r, _m, _a in layer.groups)
+        or layer.axial or layer.planar or layer.helical
+    )
+    if needs_multi_judge:
         issues.append(
             "I6 judge: full InChIKey is not a valid judge here "
-            "(InChI drops AND/OR groups and is blind to axial chirality)"
+            "(InChI drops AND/OR groups and is blind to axial/planar/helical "
+            "chirality)"
         )
 
     hard = [i for i in issues if not i.startswith("I6")]
@@ -941,10 +1548,13 @@ def stereo_coverage(mol: Chem.Mol) -> Dict[str, int]:
     """Count stereo elements of a molecule (used by the benchmark harness)."""
     m = prepare_mol(mol)
     cip = cip_map(m)
+    planar, helical, _warnings = extra_stereo_records(mol)
     return {
         "centres": len(cip),
         "pseudo_asymmetric": sum(1 for v in cip.values() if v in ("r", "s")),
         "groups": len(m.GetStereoGroups()),
         "axial": sum(1 for b in m.GetBonds() if b.GetStereo() in _ATROP),
         "isotopes": sum(1 for a in m.GetAtoms() if a.GetIsotope()),
+        "planar": len(planar),
+        "helical": len(helical),
     }

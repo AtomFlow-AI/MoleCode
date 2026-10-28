@@ -118,16 +118,14 @@ class MolToMermaidConverter:
         # descriptor cache, never as the source of truth.
         mol = stereo_mod.prepare_mol(mol)
         modern_cip = stereo_mod.modern_cip_map(mol)
-        self.stereo_info = stereo_mod.extract_stereo_info(mol, cip=modern_cip)
 
-        # Convert aromatic molecules to Kekule form (explicit single/double bonds)
-        # Graph notation can only represent explicit bonds, not aromaticity
+        # Convert aromatic molecules to a *canonical* Kekule form (explicit
+        # single/double bonds; canonical so that doc -> mol -> doc does not flip
+        # resonance structures).  Graph notation cannot represent aromaticity.
         if kekulize:
-            try:
-                Chem.Kekulize(mol, clearAromaticFlags=True)
-            except Exception:
-                # If Kekulization fails (unusual structures), continue anyway
-                pass
+            mol = stereo_mod.canonical_kekulize(mol)
+
+        self.stereo_info = stereo_mod.extract_stereo_info(mol, cip=modern_cip)
 
         # Reset counters
         self.atom_id_map = {}

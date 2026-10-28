@@ -311,17 +311,17 @@ class MermaidMolParser:
                 pass
 
         self._assign_chirality_from_ids(mol, atom_id_to_idx)
+        self._assign_double_bond_stereo(mol, stereo_bonds)
 
-        # Stereo extension layer: local parity records (source truth), enhanced
-        # stereo groups and axial chirality.  The stock base parser never reaches
-        # this branch because a stock document has no extension lines.
+        # Stereo extension layer: local parity records (source truth), explicit
+        # E/Z reference atoms, enhanced stereo groups (atom and/or axis members),
+        # axial chirality and planar/helical units.  The stock base parser never
+        # reaches this branch because a stock document has no extension lines.
         if self.parse_stereo_layer and not self.layer.is_empty:
             mol, layer_issues = stereo_mod.apply_stereo_layer(
                 mol, self.layer, atom_id_to_idx
             )
             self.warnings.extend(layer_issues)
-
-        self._assign_double_bond_stereo(mol, stereo_bonds)
 
         return mol
 
@@ -343,7 +343,7 @@ class MermaidMolParser:
         # parity / unspecified instead of asserting an enantiomer).
         rel_members = {
             member
-            for gtype, _read_id, members in self.layer.groups
+            for gtype, _read_id, members, _axes in self.layer.groups
             if gtype in ("AND", "OR")
             for member in members
         }
@@ -392,47 +392,29 @@ class MermaidMolParser:
             pass
 
     def _assign_double_bond_stereo(self, mol: Chem.Mol, stereo_bonds: List[Tuple[int, int, str]]):
-        """Restore ===|E| / ===|Z| double bond geometry."""
+        """Restore ===|E| / ===|Z| double bond geometry.
+
+        Reference atoms are the first neighbour of each end (the documented
+        base-grammar convention); explicit reference atoms can override this
+        through an E/Z extension object (see stereo.apply_stereo_layer).
+        """
         for idx1, idx2, stereo_type in stereo_bonds:
             bond = mol.GetBondBetweenAtoms(idx1, idx2)
             if bond is None:
                 continue
-
-            # Get the neighboring atoms on each end of the double bond (used to define stereochemistry)
-            atom1 = mol.GetAtomWithIdx(idx1)
-            atom2 = mol.GetAtomWithIdx(idx2)
-
-            neighbors1 = [n.GetIdx() for n in atom1.GetNeighbors() if n.GetIdx() != idx2]
-            neighbors2 = [n.GetIdx() for n in atom2.GetNeighbors() if n.GetIdx() != idx1]
-
+            neighbors1 = [n.GetIdx() for n in mol.GetAtomWithIdx(idx1).GetNeighbors()
+                          if n.GetIdx() != idx2]
+            neighbors2 = [n.GetIdx() for n in mol.GetAtomWithIdx(idx2).GetNeighbors()
+                          if n.GetIdx() != idx1]
             if not neighbors1 or not neighbors2:
                 continue
-
-            bond.SetStereoAtoms(neighbors1[0], neighbors2[0])
-
-            if stereo_type == 'E':
-                bond.SetStereo(Chem.BondStereo.STEREOE)
-            elif stereo_type == 'Z':
-                bond.SetStereo(Chem.BondStereo.STEREOZ)
-            elif stereo_type == 'CIS':
-                bond.SetStereo(Chem.BondStereo.STEREOCIS)
-            elif stereo_type == 'TRANS':
-                bond.SetStereo(Chem.BondStereo.STEREOTRANS)
-
-            # Mark the adjacent single bonds with directions that encode the
-            # same relative orientation.  Without this, a later
-            # AssignStereochemistry(cleanIt=True) pass silently drops the E/Z
-            # label (RDKit uses the bond directions as corroborating evidence).
-            e_like = stereo_type in ('E', 'TRANS')
-            dir1 = mol.GetBondBetweenAtoms(idx1, neighbors1[0])
-            dir2 = mol.GetBondBetweenAtoms(idx2, neighbors2[0])
-            if dir1 is not None:
-                dir1.SetBondDir(Chem.BondDir.ENDUPRIGHT)
-            if dir2 is not None:
-                dir2.SetBondDir(
-                    Chem.BondDir.ENDUPRIGHT if e_like
-                    else Chem.BondDir.ENDDOWNRIGHT
+            try:
+                stereo_mod.set_double_bond_stereo(
+                    mol, idx1, idx2, stereo_type,
+                    neighbors1[0], neighbors2[0],
                 )
+            except Exception:
+                continue
 
         try:
             # Do not use cleanIt=True to avoid clearing the E/Z labels
