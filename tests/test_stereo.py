@@ -196,7 +196,7 @@ class TestValidation(unittest.TestCase):
 
     def test_malformed_axial_ref_reported(self):
         layer = S.ParsedStereoLayer()
-        layer.axial.append(("cw", "A_C_1", "A_C_2", "A_C_9", "A_C_10"))
+        layer.axial.append(("A_AX_1", "cw", "A_C_1", "A_C_2", "A_C_9", "A_C_10"))
         base = Chem.MolFromSmiles("Cc1ccccc1-c1ccccc1C")
         idx = {f"A_C_{i + 1}": i for i in range(base.GetNumAtoms())}
         _mol_out, issues = S.apply_stereo_layer(base, layer, idx)
@@ -215,17 +215,15 @@ class TestIdempotence(unittest.TestCase):
                 doc2 = mol_to_mermaid(mol2, name="M", parity_mode="all")
                 self.assertEqual(doc1, doc2)
 
-    def test_aromatic_docs_stable_up_to_kekule(self):
-        # Aromatic rings admit several valid Kekule forms; the writer is not
-        # required to reproduce the same resonance structure, only the same
-        # molecule (documented limitation of the base projection).
+    def test_aromatic_docs_are_byte_stable(self):
+        # Canonical Kekulization makes doc -> mol -> doc byte-identical even for
+        # aromatic molecules (previously a resonance-form mismatch).
         smi = "Cc1ccccc1-c1ccccc1C |wU:6.5|"
         doc1 = mol_to_mermaid(_mol(smi), name="M", parity_mode="all")
         mol2 = mermaid_to_mol(doc1)
         doc2 = mol_to_mermaid(mol2, name="M", parity_mode="all")
+        self.assertEqual(doc1, doc2)
         self.assertEqual(_inchi_key(_mol(smi)), _inchi_key(mol2))
-        self.assertEqual(S.cx_smiles(S.prepare_mol(_mol(smi))),
-                         S.cx_smiles(S.prepare_mol(mol2)))
         self.assertEqual(_axial_sig(_mol(smi)), _axial_sig(mol2))
 
 
@@ -282,6 +280,163 @@ class TestValidatorRegressions(unittest.TestCase):
         ])
         report = S.validate_document(text)
         self.assertTrue(any("group conflict" in i for i in report["issues"]))
+
+
+class TestCanonicalParityFrame(unittest.TestCase):
+    def test_bond_line_reordering_is_meaning_preserving(self):
+        smi = "N[C@@H](C)[C@H](O)C(=O)O |&1:1,3|"
+        mol = _mol(smi)
+        doc = mol_to_mermaid(mol, name="Thr", parity_mode="all")
+        lines = doc.split("\n")
+        bond_lines = [(i, l) for i, l in enumerate(lines)
+                      if ("---" in l or "===" in l) and "%%" not in l]
+        indices = [i for i, _ in bond_lines]
+        block = [l for _, l in bond_lines]
+        rest = [l for i, l in enumerate(lines) if i not in set(indices)]
+        start = min(indices)
+        for offset, text in enumerate(reversed(block)):
+            rest.insert(start + offset, text)
+        out = mermaid_to_mol("\n".join(rest))
+        self.assertIsNotNone(out)
+        self.assertEqual(_inchi_key(mol), _inchi_key(out))
+        rewritten = mol_to_mermaid(out, name="Thr", parity_mode="all")
+        self.assertEqual([l.strip() for l in doc.split("\n") if "par=" in l],
+                         [l.strip() for l in rewritten.split("\n") if "par=" in l])
+
+    def test_local_parity_uses_persistent_atom_ids(self):
+        # The parity bit must not depend on the order of bond lines: a doc with
+        # reversed edges decodes to the same stereoisomer.
+        smi = "C[C@H](O)[C@H](O)[C@@H](C)O"
+        mol = _mol(smi)
+        doc = mol_to_mermaid(mol, name="Pentitol", parity_mode="all")
+        lines = doc.split("\n")
+        bond_positions = [i for i, l in enumerate(lines)
+                          if ("---" in l or "===" in l) and "%%" not in l]
+        for a, b in zip(bond_positions, reversed(bond_positions)):
+            lines[a], lines[b] = lines[b], lines[a]
+        out = mermaid_to_mol("\n".join(lines))
+        self.assertEqual(_inchi_key(mol), _inchi_key(out))
+
+
+class TestEZReferenceAtoms(unittest.TestCase):
+    def test_ambiguous_ez_gets_explicit_reference(self):
+        smi = "C/C=C(/F)Br"  # first-neighbour convention flips this one
+        mol = _mol(smi)
+        doc = mol_to_mermaid(mol, name="EZ", parity_mode="all")
+        self.assertIn("_EZ_", doc)
+        out = mermaid_to_mol(doc)
+        self.assertEqual(_inchi_key(mol), _inchi_key(out))
+        self.assertEqual(doc, mol_to_mermaid(out, name="EZ", parity_mode="all"))
+
+    def test_plain_ez_adds_no_object(self):
+        smi = "C/C=C/C"
+        doc = mol_to_mermaid(_mol(smi), name="EZ", parity_mode="all")
+        self.assertNotIn("_EZ_", doc)
+        self.assertEqual(_inchi_key(_mol(smi)), _inchi_key(mermaid_to_mol(doc)))
+
+
+class TestBondLevelStereoGroups(unittest.TestCase):
+    def test_and_group_on_atropisomer_axis(self):
+        mol = _mol("Cc1ccccc1-c1ccccc1C |wU:6.5|")
+        rw = Chem.RWMol(mol)
+        atrop = [b.GetIdx() for b in mol.GetBonds()
+                 if b.GetStereo() in (Chem.BondStereo.STEREOATROPCW,
+                                      Chem.BondStereo.STEREOATROPCCW)][0]
+        group = Chem.CreateStereoGroup(Chem.StereoGroupType.STEREO_AND, rw, [], [atrop])
+        rw.SetStereoGroups([group])
+        with_group = rw.GetMol()
+        doc = mol_to_mermaid(with_group, name="Bip", parity_mode="all")
+        self.assertIn("axes=", doc)
+        out = mermaid_to_mol(doc)
+        groups = out.GetStereoGroups()
+        self.assertEqual(len(groups), 1)
+        self.assertEqual([b.GetIdx() for b in groups[0].GetBonds()], [atrop])
+        self.assertEqual(S.cx_smiles(S.prepare_mol(with_group)),
+                         S.cx_smiles(S.prepare_mol(out)))
+
+
+class TestPlanarHelical(unittest.TestCase):
+    @staticmethod
+    def _synthetic_3d():
+        mol = _mol("CCCCC")
+        conf = Chem.Conformer(5)
+        for i, point in enumerate([(0, 0, 0), (1, 0, 0), (0, 1, 0),
+                                   (0.2, 0.2, 1.0), (0.8, 0.1, -1.0)]):
+            conf.SetAtomPosition(i, point)
+        mol.RemoveAllConformers()
+        mol.AddConformer(conf)
+        return mol
+
+    def test_planar_sign_flips_under_mirror(self):
+        mol = self._synthetic_3d()
+        sign = S.planar_chirality_sign(mol, [0, 1, 2], 3, 4)
+        mirrored = Chem.Mol(mol)
+        conf = mirrored.GetConformer()
+        for i in range(mirrored.GetNumAtoms()):
+            p = conf.GetAtomPosition(i)
+            conf.SetAtomPosition(i, (-p.x, p.y, p.z))
+        self.assertNotEqual(sign, S.planar_chirality_sign(mirrored, [0, 1, 2], 3, 4))
+
+    def test_planar_roundtrip(self):
+        mol = self._synthetic_3d()
+        sign = S.set_planar_chirality(mol, [0, 1, 2], 3, 4)
+        doc = mol_to_mermaid(mol, name="P", parity_mode="all")
+        self.assertIn("_PL_", doc)
+        out = mermaid_to_mol(doc)
+        planar, _helical, _warn = S.extra_stereo_records(out)
+        self.assertEqual(len(planar), 1)
+        self.assertEqual(planar[0].sign, sign)
+        self.assertEqual(doc, mol_to_mermaid(out, name="P", parity_mode="all"))
+
+    def test_helical_roundtrip_and_mirror(self):
+        from rdkit.Chem import AllChem
+        smi = "c1ccc2c(c1)ccc1c2ccc2ccccc21"
+        mol = _mol(smi)
+        AllChem.EmbedMolecule(mol, randomSeed=11)
+        path = list(range(0, 8))
+        sign = S.helical_chirality_sign(mol, path)
+        mirrored = Chem.Mol(mol)
+        conf = mirrored.GetConformer()
+        for i in range(mirrored.GetNumAtoms()):
+            p = conf.GetAtomPosition(i)
+            conf.SetAtomPosition(i, (-p.x, p.y, p.z))
+        self.assertNotEqual(sign, S.helical_chirality_sign(mirrored, path))
+        S.set_helical_chirality(mol, path)
+        doc = mol_to_mermaid(mol, name="H", parity_mode="all")
+        self.assertIn("_HL_", doc)
+        out = mermaid_to_mol(doc)
+        _planar, helical, _warn = S.extra_stereo_records(out)
+        self.assertEqual(len(helical), 1)
+        self.assertEqual(doc, mol_to_mermaid(out, name="H", parity_mode="all"))
+
+
+class TestKekuleStability(unittest.TestCase):
+    def test_aromatic_documents_are_byte_stable(self):
+        for smi in ["c1ccc2ccccc2c1", "Oc1ccc(Cl)cc1",
+                    "CC(=O)Oc1ccccc1C(=O)O",
+                    "Cc1ccccc1-c1ccccc1C |wU:6.5|"]:
+            with self.subTest(smiles=smi):
+                mol = _mol(smi)
+                doc1 = mol_to_mermaid(mol, name="M", parity_mode="all")
+                doc2 = mol_to_mermaid(mermaid_to_mol(doc1), name="M", parity_mode="all")
+                self.assertEqual(doc1, doc2)
+
+
+class TestNewInvariants(unittest.TestCase):
+    def test_bad_planar_record_flagged(self):
+        text = "M_PL_1{pl=maybe; plane=M_C_1,M_C_2; ref1=M_C_3; ref2=M_C_4}"
+        report = S.validate_document(text)
+        self.assertFalse(report["ok"])
+
+    def test_bad_helical_record_flagged(self):
+        text = "M_HL_1{hl=X; path=M_C_1,M_C_2,M_C_3}"
+        report = S.validate_document(text)
+        self.assertFalse(report["ok"])
+
+    def test_group_referencing_unknown_axis_flagged(self):
+        text = "M_SG_1{sg=AND:1; axes=M_AX_9}"
+        report = S.validate_document(text)
+        self.assertTrue(any("I12" in i for i in report["issues"]))
 
 
 if __name__ == "__main__":
