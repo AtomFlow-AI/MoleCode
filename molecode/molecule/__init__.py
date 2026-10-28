@@ -11,6 +11,23 @@ SMILES and the MoleCode Mermaid graph language for small molecules.
 """
 
 from .rdkit_to_mermaid import MolToMermaidConverter, mol_to_mermaid
+from . import stereo
+from .stereo import (
+    CIP_IMPL,
+    PROFILE_ID,
+    StereoGroupRecord,
+    StereoInfo,
+    AxialRecord,
+    ParsedStereoLayer,
+    apply_stereo_layer,
+    extract_stereo_info,
+    parse_stereo_layer,
+    prepare_mol,
+    render_stereo_layer,
+    stereo_coverage,
+    stereo_fingerprint,
+    validate_document,
+)
 from .mermaid_to_rdkit import (
     MermaidMolParser,
     mermaid_to_mol,
@@ -25,6 +42,21 @@ from .mermaid_to_rdkit import (
 __all__ = [
     "MolToMermaidConverter",
     "mol_to_mermaid",
+    "stereo",
+    "CIP_IMPL",
+    "PROFILE_ID",
+    "StereoInfo",
+    "StereoGroupRecord",
+    "AxialRecord",
+    "ParsedStereoLayer",
+    "prepare_mol",
+    "extract_stereo_info",
+    "render_stereo_layer",
+    "parse_stereo_layer",
+    "apply_stereo_layer",
+    "stereo_fingerprint",
+    "stereo_coverage",
+    "validate_document",
     "MermaidMolParser",
     "mermaid_to_mol",
     "mol_to_smiles",
