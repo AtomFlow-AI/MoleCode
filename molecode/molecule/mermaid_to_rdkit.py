@@ -19,6 +19,8 @@ from typing import Dict, List, Tuple, Optional
 from rdkit import Chem
 from rdkit.Chem import AllChem, Draw
 
+from . import stereo as stereo_mod
+
 
 class MermaidMolParser:
     """Parse a Mermaid molecule graph and convert it to an RDKit Mol object."""
@@ -32,10 +34,14 @@ class MermaidMolParser:
         '-->': Chem.BondType.DATIVE,  # Coordinate bond
     }
 
-    def __init__(self):
+    def __init__(self, parse_stereo_layer: bool = True):
         self.atoms: Dict[str, int] = {}  # atom_id -> atom_label mapping
         self.bonds: List[Tuple] = []  # (atom1_id, atom2_id, bond_type) or (atom1_id, atom2_id, bond_type, stereo)
-        self.chirality: Dict[str, str] = {}  # atom_id -> chirality ('R' or 'S') mapping
+        self.chirality: Dict[str, str] = {}  # atom_id -> chirality (R/S/r/s) mapping
+        self.atom_suffix: Dict[str, str] = {}  # atom_id -> CIP suffix parsed from the id
+        self.parse_stereo_layer = parse_stereo_layer
+        self.layer = stereo_mod.ParsedStereoLayer()
+        self.warnings: List[str] = []
 
     def parse_mermaid_graph(self, mermaid_text: str) -> Optional[Chem.Mol]:
         """
@@ -50,6 +56,17 @@ class MermaidMolParser:
         self.atoms = {}
         self.bonds = []
         self.chirality = {}
+        self.atom_suffix = {}
+        self.warnings = []
+
+        # The stereo layer is parsed from the raw text first (comments, {...}
+        # objects and -.-> member edges); the base parser below only consumes
+        # atom and bond lines, so stock documents keep working unchanged.
+        self.layer = (
+            stereo_mod.parse_stereo_layer(mermaid_text)
+            if self.parse_stereo_layer
+            else stereo_mod.ParsedStereoLayer()
+        )
 
         lines = mermaid_text.strip().split('\n')
 
@@ -64,11 +81,31 @@ class MermaidMolParser:
                 not line):
                 continue
 
+            # Extension objects and dotted member edges are not base grammar
+            if re.match(r'^[A-Za-z_][\w]*\{.*\}$', line):
+                continue
+            if re.match(r'^[\w]+\s*-\.->\s*[\w]+$', line):
+                continue
+
             # Parse atom definitions and bond connections
             self._parse_line(line)
 
-        # Build the RDKit Mol object
-        return self._build_mol()
+        # Build the RDKit Mol object (base projection + stereo layer)
+        mol = self._build_mol()
+
+        # Static invariant checks (I1 soundness, I3 groups, I5 axial, I6 judge).
+        # The report is advisory but visible via parser.warnings; the hard
+        # enforcement of I1 happens in _assign_chirality_from_ids.
+        if self.parse_stereo_layer and mol is not None:
+            try:
+                report = stereo_mod.validate_document(mermaid_text, self.atom_suffix)
+                for issue in report.get("issues", []):
+                    if not issue.startswith("I6"):  # judge note, not a document bug
+                        self.warnings.append(issue)
+            except Exception as exc:  # never fail parsing because of validation
+                self.warnings.append(f"stereo validation failed: {exc}")
+
+        return mol
 
     def _parse_line(self, line: str):
         """Parse a single line to extract atom and bond information."""
@@ -97,19 +134,21 @@ class MermaidMolParser:
             self.bonds.append((atom1_id, atom2_id, bond_type))
             return
 
-        # Try to match an atom definition: AtomID[Label] or AtomID_R[Label] or AtomID_S[Label]
-        atom_pattern = r'([\w_]+?)(?:_(R|S))?\[([^\]]+)\]'
+        # Try to match an atom definition: AtomID[Label], AtomID_R[Label],
+        # AtomID_S[Label] (absolute CIP cache) or AtomID_r/_s (pseudo-asymmetric).
+        atom_pattern = r'([\w_]+?)(?:_([RSrs]))?\[([^\]]+)\]'
         atom_match = re.search(atom_pattern, line)
 
         if atom_match:
             base_id = atom_match.group(1)
-            chirality = atom_match.group(2)  # 'R', 'S', or None
+            chirality = atom_match.group(2)  # 'R', 'S', 'r', 's', or None
             label = atom_match.group(3)
 
             # Build the full atom ID (including chirality suffix)
             if chirality:
                 atom_id = f"{base_id}_{chirality}"
                 self.chirality[atom_id] = chirality
+                self.atom_suffix[atom_id] = chirality
             else:
                 atom_id = base_id
 
@@ -197,12 +236,17 @@ class MermaidMolParser:
         # Mapping from atom ID to index
         atom_id_to_idx = {}
 
+        # I4: isotopes must be applied before CIP labels are derived/validated
+        isotope_by_atom_id = {doc_id: mass for mass, doc_id in self.layer.isotopes}
+
         # Add atoms
         for atom_id, label in self.atoms.items():
             element, h_count, charge = self._parse_atom_label(label)
 
             # Create atom
             atom = Chem.Atom(element)
+            if atom_id in isotope_by_atom_id:
+                atom.SetIsotope(isotope_by_atom_id[atom_id])
 
             # Set explicit hydrogen count (if any)
             if h_count > 0:
@@ -267,40 +311,80 @@ class MermaidMolParser:
                 pass
 
         self._assign_chirality_from_ids(mol, atom_id_to_idx)
+
+        # Stereo extension layer: local parity records (source truth), enhanced
+        # stereo groups and axial chirality.  The stock base parser never reaches
+        # this branch because a stock document has no extension lines.
+        if self.parse_stereo_layer and not self.layer.is_empty:
+            mol, layer_issues = stereo_mod.apply_stereo_layer(
+                mol, self.layer, atom_id_to_idx
+            )
+            self.warnings.extend(layer_issues)
+
         self._assign_double_bond_stereo(mol, stereo_bonds)
 
         return mol
 
 
     def _assign_chirality_from_ids(self, mol: Chem.Mol, atom_id_to_idx: Dict[str, int]):
-        """Restore absolute CIP chirality from the _R/_S suffix of atom IDs."""
+        """Restore chirality from the CIP suffix of atom IDs.
+
+        The suffix is a derived descriptor cache: the tag is brute-forced with
+        the modern (Hanson 2018) CIP implementation declared in the document
+        header; legacy CIP is only used as a backwards-compatibility fallback
+        for documents written by the previous writer.
+        """
         if not self.chirality:
             return
 
+        # I1 soundness enforcement: an absolute suffix on an AND/OR member is an
+        # over-claim.  The local parity record (S1) is the only valid encoding
+        # there, so the suffix is ignored (sound: reader leaves it as local
+        # parity / unspecified instead of asserting an enantiomer).
+        rel_members = {
+            member
+            for gtype, _read_id, members in self.layer.groups
+            if gtype in ("AND", "OR")
+            for member in members
+        }
+        rel_members_base = {stereo_mod.base_atom_id(m) for m in rel_members}
+        for atom_id in list(self.chirality):
+            if atom_id in rel_members or stereo_mod.base_atom_id(atom_id) in rel_members_base:
+                self.warnings.append(
+                    f"I1 over-claim ignored: atom {atom_id} has suffix "
+                    f"_{self.chirality[atom_id]} but belongs to an AND/OR group"
+                )
+                del self.chirality[atom_id]
+                self.atom_suffix.pop(atom_id, None)
+
+        desired = {}
         for atom_id, desired_cip in self.chirality.items():
             idx = atom_id_to_idx.get(atom_id)
-            if idx is None:
-                continue
+            if idx is not None:
+                desired[idx] = desired_cip
 
-            atom = mol.GetAtomWithIdx(idx)
-            matched = False
-
-            for chiral_tag in (
-                Chem.ChiralType.CHI_TETRAHEDRAL_CW,
-                Chem.ChiralType.CHI_TETRAHEDRAL_CCW,
-            ):
-                atom.SetChiralTag(chiral_tag)
-                try:
-                    Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
-                except Exception:
+        # Fixed-point iteration: pseudo-asymmetric and multi-centre descriptors
+        # depend on the configuration of *other* centres, so a single pass can
+        # land on the wrong tag.  Re-derive the CIP cache and repair mismatches
+        # until stable (bounded).
+        for _pass in range(6):
+            changed = False
+            current = stereo_mod.modern_cip_map(mol)
+            for idx, want in desired.items():
+                if current.get(idx) == want:
                     continue
-
-                if atom.HasProp('_CIPCode') and atom.GetProp('_CIPCode') == desired_cip:
-                    matched = True
-                    break
-
-            if not matched:
-                atom.SetChiralTag(Chem.ChiralType.CHI_UNSPECIFIED)
+                ok = stereo_mod.set_chirality_from_suffix(mol, idx, want)
+                if not ok:
+                    mol.GetAtomWithIdx(idx).SetChiralTag(
+                        Chem.ChiralType.CHI_UNSPECIFIED
+                    )
+                    self.warnings.append(
+                        f"suffix _{want} at atom idx {idx} has no matching "
+                        "tetrahedral tag under the declared CIP implementation"
+                    )
+                changed = True
+            if not changed:
+                break
 
         try:
             Chem.AssignStereochemistry(mol, cleanIt=False, force=True)
@@ -334,6 +418,21 @@ class MermaidMolParser:
                 bond.SetStereo(Chem.BondStereo.STEREOCIS)
             elif stereo_type == 'TRANS':
                 bond.SetStereo(Chem.BondStereo.STEREOTRANS)
+
+            # Mark the adjacent single bonds with directions that encode the
+            # same relative orientation.  Without this, a later
+            # AssignStereochemistry(cleanIt=True) pass silently drops the E/Z
+            # label (RDKit uses the bond directions as corroborating evidence).
+            e_like = stereo_type in ('E', 'TRANS')
+            dir1 = mol.GetBondBetweenAtoms(idx1, neighbors1[0])
+            dir2 = mol.GetBondBetweenAtoms(idx2, neighbors2[0])
+            if dir1 is not None:
+                dir1.SetBondDir(Chem.BondDir.ENDUPRIGHT)
+            if dir2 is not None:
+                dir2.SetBondDir(
+                    Chem.BondDir.ENDUPRIGHT if e_like
+                    else Chem.BondDir.ENDDOWNRIGHT
+                )
 
         try:
             # Do not use cleanIt=True to avoid clearing the E/Z labels
@@ -383,7 +482,7 @@ def get_invalid_atom_labels(mermaid_text: str, mol: Chem.Mol) -> List[str]:
     lines = mermaid_text.strip().split('\n')
     for line in lines:
         line = line.strip()
-        atom_pattern = r'([\w_]+?)(?:_(R|S))?\[([^\]]+)\]'
+        atom_pattern = r'([\w_]+?)(?:_([RSrs]))?\[([^\]]+)\]'
         match = re.search(atom_pattern, line)
 
         if match:
@@ -395,7 +494,11 @@ def get_invalid_atom_labels(mermaid_text: str, mol: Chem.Mol) -> List[str]:
     return invalid_labels
 
 
-def mermaid_to_mol(mermaid_text: str, strict: bool = True) -> Optional[Chem.Mol]:
+def mermaid_to_mol(
+    mermaid_text: str,
+    strict: bool = True,
+    parse_stereo_layer: bool = True,
+) -> Optional[Chem.Mol]:
     """
     Convert Mermaid graph format to an RDKit Mol object (convenience function).
 
@@ -423,7 +526,7 @@ def mermaid_to_mol(mermaid_text: str, strict: bool = True) -> Optional[Chem.Mol]
         >>> print(Chem.MolToSmiles(mol))
         CCO
     """
-    parser = MermaidMolParser()
+    parser = MermaidMolParser(parse_stereo_layer=parse_stereo_layer)
     mol = parser.parse_mermaid_graph(mermaid_text)
 
     if mol is None:
