@@ -93,13 +93,46 @@ treats Kekulé and aromatic forms as equivalent.
 
 ## Stereochemistry
 
+Base grammar (unchanged, always safe to hand-write):
+
 - **Double-bond E/Z** — annotate the double bond:
   `but2ene_C_2 ===|E| but2ene_C_3` (also `===|Z|`).
 - **Tetrahedral chirality** — append the **absolute CIP** label `_R` / `_S` to the
   atom id: `mol_C_2_R[CH]`. This is the CIP configuration, not RDKit's
   order-dependent CW/CCW tag.
+- **Pseudo-asymmetric centres** — lowercase `_r` / `_s` suffix (e.g.
+  `pentitol_C_3_s[CH]`); the stock parser treats this as part of the atom id
+  (the constitution is unchanged, so the projection stays sound).
 
-Both round-trip through SMILES (and PSMILES for polymers).
+All of the above round-trip through SMILES (and PSMILES for polymers).
+
+### Optional `stereo/1` extension layer
+
+Documents that need **relative configuration (AND/OR)**, **axial chirality**,
+**isotopes** or an explicit **local-parity source of truth** add an extension
+layer of `{...}` object lines; the base parser skips every such line (and any
+`-.->` member edge), so the file stays readable by stock MoleCode:
+
+```
+%% molecode-profile: stereo/1
+%% cip-impl: hanson2018 (rdkit.Chem.rdCIPLabeler)
+Thr_TET_1{tet=Thr_C_1; par=cw}                      %% local parity (source truth)
+Thr_SG_1{sg=AND:1; mem=Thr_C_1,Thr_C_3_S}          %% enhanced stereo group
+Biaryl_AX_1{ax=cw; axis=Biaryl_C_7,Biaryl_C_8; ref1=Biaryl_C_6; ref2=Biaryl_C_9}
+Lac_ISO_1{iso=13; atom=Lac_C_1}                     %% isotope token
+```
+
+Rules that matter when editing:
+
+- AND/OR group members must **not** carry an absolute `_R/_S` suffix — the
+  relative claim would become an absolute one (the reader flags this as I1).
+- `par=cw|ccw` is defined against the **order in which the atom's incident
+  edges appear in the document**; append new bonds for an existing centre rather
+  than inserting them before its existing edges.
+- Verify with RDKit CXSMILES + StereoGroup signatures, not only full InChIKey
+  (InChI drops AND/OR groups and is blind to axial chirality).
+
+Full grammar, invariants and API: see `docs/07-stereo.md` in the repository.
 
 ## Multi-subgraph molecules and reactions
 

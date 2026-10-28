@@ -160,7 +160,7 @@ for large molecules. See [`.claude/skills/molecode/SKILL.md`](.claude/skills/mol
 
 ### 🧪 Small molecules — [`molecode.molecule`](molecode/molecule)
 
-Atoms are `prefix_Element_Number[Label]` nodes; bonds are `---` (single), `===` (double), `-.-` (triple), with `===|E|`/`===|Z|` and `_R`/`_S` for stereochemistry. → [syntax reference](docs/02-syntax.md)
+Atoms are `prefix_Element_Number[Label]` nodes; bonds are `---` (single), `===` (double), `-.-` (triple), with `===|E|`/`===|Z|` and `_R`/`_S` for stereochemistry. Pseudo-asymmetric centres, enhanced stereo (AND/OR/ABS), axial chirality and isotopes are carried by an optional `stereo/1` extension layer that the base parser safely ignores. → [syntax reference](docs/02-syntax.md) · [stereo docs](docs/07-stereo.md)
 
 ### 🔗 Polymers — [`molecode.polymer`](molecode/polymer)
 
@@ -260,7 +260,7 @@ molecode/                # the library (pip-installable)
 ├── prompts/             # LLM system prompts (molecule + markush grammars)
 └── llm.py               # optional OpenAI-compatible client (you supply key + base_url)
 examples/                # 7 runnable demos (round-trips + 4 task families)
-docs/                    # overview, syntax, polymers, markush, tasks, why-it-works
+docs/                    # overview, syntax, stereo, polymers, markush, tasks, why-it-works
 AGENTS.md                # entrypoint for coding agents
 .claude/skills/molecode/ # Agent Skill: SKILL.md + CLI + references (Claude Code / Codex)
 ```

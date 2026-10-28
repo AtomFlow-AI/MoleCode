@@ -92,6 +92,47 @@ chlorophenol_C_3 === chlorophenol_C_4
   R2butanol_C_2_R[CH]       %% _R or _S
   ```
 
+- **Pseudo-asymmetric r/s** — lowercase suffix:
+
+  ```
+  Pentitol_C_3_s[CH]        %% modern CIP pseudo-asymmetric descriptor
+  ```
+
+### Stereo extension (profile `stereo/1`)
+
+The base grammar above is unchanged.  Documents that need relative (AND/OR)
+configuration, axial chirality, isotopes or an explicit local-parity source of
+truth add an **extension layer** that the stock parser ignores:
+
+```
+graph TB
+    %% molecode-profile: stereo/1
+    %% cip-impl: hanson2018 (rdkit.Chem.rdCIPLabeler)
+    subgraph Thr["relative configuration defined"]
+        Thr_C_1[CH]
+        Thr_C_3_S[CH]
+        ... atoms and bonds as usual ...
+        %% ---- stereo layer (stereo/1) ----
+        Thr_TET_1{tet=Thr_C_1; par=cw}
+        Thr_SG_1{sg=AND:1; mem=Thr_C_1,Thr_C_3_S}
+    end
+```
+
+- `{...}` object lines and `-.->` member edges are skipped by the base parser;
+  `%%` comments are ignored as usual.
+- AND/OR members carry **no** absolute `_R/_S` suffix (sound base projection).
+- Axial: `Pfx_AX_1{ax=cw; axis=Pfx_C_7,Pfx_C_8; ref1=Pfx_C_6; ref2=Pfx_C_9}`
+- Isotope: `Pfx_ISO_1{iso=13; atom=Pfx_C_1}`
+
+See [07-stereo.md](07-stereo.md) for the full grammar, reference-frame definition,
+invariants and API.  Code:
+
+```python
+from molecode.molecule import mol_to_mermaid, mermaid_to_mol
+doc = mol_to_mermaid(Chem.MolFromSmiles("..."), parity_mode="all")   # opt-in; default is "group_only"
+mol = mermaid_to_mol(doc)
+```
+
 ## Round-tripping in code
 
 ```python

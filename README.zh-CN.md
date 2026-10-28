@@ -155,7 +155,7 @@ python .claude/skills/molecode/scripts/molecode_convert.py molecode-to-smiles --
 
 ### 🧪 小分子 — [`molecode.molecule`](molecode/molecule)
 
-原子是 `prefix_Element_Number[Label]` 节点;键用 `---`(单)、`===`(双)、`-.-`(三),立体化学用 `===|E|`/`===|Z|` 和 `_R`/`_S`。 → [语法参考](docs/02-syntax.md)
+原子是 `prefix_Element_Number[Label]` 节点;键用 `---`(单)、`===`(双)、`-.-`(三),立体化学用 `===|E|`/`===|Z|` 和 `_R`/`_S`。假不对称中心、增强立体(AND/OR/ABS)、轴手性和同位素由可选的 `stereo/1` 扩展层承载,base parser 会安全忽略它。 → [语法参考](docs/02-syntax.md) · [手性文档](docs/07-stereo.md)
 
 ### 🔗 聚合物 — [`molecode.polymer`](molecode/polymer)
 
@@ -250,7 +250,7 @@ molecode/                # 核心库(可 pip 安装)
 ├── prompts/             # LLM 系统提示(小分子 + 马库什文法)
 └── llm.py               # 可选的 OpenAI 兼容客户端(key 与 base_url 由你提供)
 examples/                # 7 个可运行示例(往返 + 四类任务)
-docs/                    # overview、syntax、polymers、markush、tasks、why-it-works
+docs/                    # overview、syntax、stereo、polymers、markush、tasks、why-it-works
 AGENTS.md                # 面向编码智能体的入口
 .claude/skills/molecode/ # Agent Skill:SKILL.md + CLI + references(Claude Code / Codex)
 ```
