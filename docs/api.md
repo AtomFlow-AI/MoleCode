@@ -167,11 +167,12 @@ from molecode.prompts import MARKUSH_SYSTEM_PROMPT     # Markush + image→MoleC
 
 ## `molecode.llm`
 
-An optional, dependency-free, OpenAI-compatible chat client. You supply the API
-key and base URL — nothing is hard-coded.
+An optional, dependency-free client for OpenAI Chat Completions and Anthropic
+Messages. Supply a base URL directly or select a provider and region preset.
 
 ```python
-class LLMClient(api_key=None, base_url=None, model=None, *, timeout=120.0, default_temperature=0.0)
+class LLMClient(api_key=None, base_url=None, model=None, *, provider=None, region=None,
+                transport=None, timeout=120.0, default_temperature=0.0)
     .chat(user, system=None, *, images=None, model=None, temperature=None, **extra) -> str
     .complete(messages, *, model=None, temperature=None, **extra) -> str
 
@@ -179,17 +180,48 @@ call_llm(system, user, *, temperature=0.0, **client_kwargs) -> Optional[str]
 image_to_data_uri(path_or_url: str) -> str
 DEFAULT_MODEL      # 'gemini-3.1-pro-preview'
 DEFAULT_BASE_URL   # 'https://api.openai.com/v1'
+PROVIDER_PRESETS   # regional OpenAI and Anthropic base URLs
+PROVIDER_MODELS    # provider defaults, supported model IDs, and model metadata
 ```
 
 Credentials fall back to env vars `MOLECODE_API_KEY` / `OPENAI_API_KEY`,
-`MOLECODE_BASE_URL`, `MOLECODE_MODEL`. Pass `images=[...]` (file paths or URLs) to
-a vision model for OCSR (molecule image → MoleCode).
+`MOLECODE_BASE_URL`, `MOLECODE_MODEL`, `MOLECODE_PROVIDER`, `MOLECODE_REGION`,
+and `MOLECODE_TRANSPORT`. Anthropic transport also recognizes
+`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and `ANTHROPIC_BASE_URL`. Pass
+`images=[...]` (file paths or URLs) to a vision model for OCSR (molecule image ->
+MoleCode).
+
+The MiniMax catalog lists `MiniMax-M3.1-Flash` first and `MiniMax-M3` second.
+An explicit constructor model, `MOLECODE_MODEL`, or per-request model override
+is preserved, including legacy and custom IDs. Flash uses adaptive thinking
+and maximum effort by default on the service. Pass `reasoning_effort="high"`
+for Chat Completions or `output_config={"effort": "high"}` for Messages through
+`chat` / `complete`; accepted levels are `low`, `medium`, `high`, `xhigh`, `max`.
+Flash does not support disabled thinking, `none` effort, `service_tier`, or
+`reasoning_split=False`. These extra request parameters are passed through;
+the client does not rewrite explicit caller settings. M3 defaults to thinking
+on for Chat Completions and off for Messages, and ignores effort. These M3
+defaults are exposed as `default_thinking_by_transport`, and
+`effort_ignored` records the unsupported effort control.
+
+Metadata uses standard USD prices per million tokens. M3's base prices apply
+up to 512k input tokens; `pricing_usd_per_million_tokens_above_512k` records its
+long-context prices, and priority pricing is 1.5 times standard. Unknown cache
+write prices are `None`.
+
+Sources: [models](https://platform.minimax.io/docs/guides/models-intro),
+[pricing](https://platform.minimax.io/docs/pricing/overview),
+[Chat Completions](https://platform.minimax.io/docs/api-reference/text-openai-api),
+[Messages](https://platform.minimax.io/docs/api-reference/text-anthropic-api).
 
 ```python
 from molecode import LLMClient
 from molecode.prompts import MOLECULE_SYSTEM_PROMPT, MARKUSH_SYSTEM_PROMPT
 
 client = LLMClient(api_key="sk-...", base_url="https://api.openai.com/v1", model="gpt-4o")
+
+minimax = LLMClient(api_key="...", provider="minimax", region="global_en",
+                    transport="anthropic")  # defaults to MiniMax-M3.1-Flash
 
 # text task
 client.chat("How many carbons are in this molecule? ...", system=MOLECULE_SYSTEM_PROMPT)
