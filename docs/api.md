@@ -200,7 +200,9 @@ for Chat Completions or `output_config={"effort": "high"}` for Messages through
 Flash does not support disabled thinking, `none` effort, `service_tier`, or
 `reasoning_split=False`. These extra request parameters are passed through;
 the client does not rewrite explicit caller settings. M3 defaults to thinking
-on for Chat Completions and off for Messages, and ignores effort.
+on for Chat Completions and off for Messages, and ignores effort. These M3
+defaults are exposed as `default_thinking_by_transport`, and
+`effort_ignored` records the unsupported effort control.
 
 Metadata uses standard USD prices per million tokens. M3's base prices apply
 up to 512k input tokens; `pricing_usd_per_million_tokens_above_512k` records its

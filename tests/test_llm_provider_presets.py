@@ -143,6 +143,11 @@ def test_minimax_model_metadata_is_current():
     }
     assert m3["priority_price_multiplier"] == 1.5
     assert m3["thinking"] == ("adaptive", "disabled")
+    assert m3["default_thinking_by_transport"] == {
+        "openai": "adaptive",
+        "anthropic": "disabled",
+    }
+    assert m3["effort_ignored"] is True
     assert m3["input_modalities"] == flash["input_modalities"] == (
         "text", "image", "video",
     )

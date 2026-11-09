@@ -110,6 +110,11 @@ PROVIDER_MODELS: Dict[str, Dict[str, Any]] = {
                 "priority_price_multiplier": 1.5,
                 "input_modalities": ("text", "image", "video"),
                 "thinking": ("adaptive", "disabled"),
+                "default_thinking_by_transport": {
+                    "openai": "adaptive",
+                    "anthropic": "disabled",
+                },
+                "effort_ignored": True,
             },
         },
     },
