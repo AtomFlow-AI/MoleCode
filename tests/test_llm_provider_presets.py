@@ -75,10 +75,10 @@ def test_minimax_preset_china_endpoint():
         api_key="dummy",
         provider="minimax",
         region="cn_zh",
-        model="MiniMax-M2.7",
+        model="MiniMax-M3.1-Flash",
     )
     assert client.base_url == "https://api.minimaxi.com/v1"
-    assert client.model == "MiniMax-M2.7"
+    assert client.model == "MiniMax-M3.1-Flash"
 
 
 def test_provider_is_case_insensitive():
@@ -115,10 +115,10 @@ def test_no_provider_uses_openai_default():
 
 def test_minimax_uses_current_default_model():
     client = LLMClient(api_key="dummy", provider="minimax")
-    assert client.model == "MiniMax-M3"
+    assert client.model == "MiniMax-M3.1-Flash"
     assert PROVIDER_MODELS["minimax"]["models"] == (
+        "MiniMax-M3.1-Flash",
         "MiniMax-M3",
-        "MiniMax-M2.7",
     )
 
 
@@ -214,7 +214,7 @@ def test_anthropic_transport_uses_regional_endpoint(region, base_url):
         transport="anthropic",
     )
     assert client.base_url == base_url
-    assert client.model == "MiniMax-M3"
+    assert client.model == "MiniMax-M3.1-Flash"
 
 
 def test_anthropic_messages_request_and_response():
@@ -249,7 +249,7 @@ def test_anthropic_messages_request_and_response():
     assert captured["url"] == "https://api.minimax.io/anthropic/v1/messages"
     assert captured["headers"]["Authorization"] == "Bearer dummy"
     assert captured["payload"] == {
-        "model": "MiniMax-M3",
+        "model": "MiniMax-M3.1-Flash",
         "messages": [
             {
                 "role": "user",

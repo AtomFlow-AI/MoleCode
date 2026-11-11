@@ -40,7 +40,7 @@ hard-coding URLs::
     client = LLMClient(api_key="...", provider="minimax", region="global_en",
                        model="MiniMax-M3")
     client = LLMClient(api_key="...", provider="minimax", region="cn_zh",
-                       transport="anthropic", model="MiniMax-M2.7")
+                       transport="anthropic", model="MiniMax-M3.1-Flash")
 
 A preset resolves ``base_url`` from ``provider`` + ``region`` + ``transport``.
 An explicit ``base_url`` always wins, followed by the matching environment
@@ -76,8 +76,8 @@ PROVIDER_PRESETS: Dict[str, Dict[str, Dict[str, str]]] = {
 
 PROVIDER_MODELS: Dict[str, Dict[str, Any]] = {
     "minimax": {
-        "default": "MiniMax-M3",
-        "models": ("MiniMax-M3", "MiniMax-M2.7"),
+        "default": "MiniMax-M3.1-Flash",
+        "models": ("MiniMax-M3.1-Flash", "MiniMax-M3"),
     },
 }
 
